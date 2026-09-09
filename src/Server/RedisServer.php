@@ -158,8 +158,9 @@ final class RedisServer
 
     /**
      * Writes the store's current contents to the configured snapshot path.
-     * A no-op if no snapshot path was configured, or the store isn't an
-     * InMemoryStore.
+     * A no-op if no snapshot path was configured, the store isn't an
+     * InMemoryStore, or a previous snapshot is still being written (see
+     * ForkingSnapshotWorker).
      */
     public function saveSnapshot(): void
     {
