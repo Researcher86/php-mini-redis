@@ -1,5 +1,5 @@
 .PHONY: up down shell build install test analyse \
-        run-server run-server-debug run-client run-client-debug bench
+        run-server run-server-debug run-client run-client-debug bench example
 
 up:
 	docker compose up -d
@@ -45,3 +45,7 @@ run-client-debug: up
 # Requires a server already running (make run-server, in another terminal).
 bench: up
 	docker compose exec php php bin/bench.php $(ARGS)
+
+# make example NAME=ttl  (also: pipelining, pubsub, slow-client)
+example: up
+	docker compose exec php php examples/$(NAME).php

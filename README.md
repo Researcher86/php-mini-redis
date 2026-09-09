@@ -48,6 +48,17 @@ make run-client ARGS="GET name"
 reply printed to stdout. It exists to make this demo runnable without
 `redis-cli`, not as a general-purpose client library.
 
+Past `PING`/`SET`/`GET`, [examples/](examples/) has one small standalone
+script per mechanism worth watching rather than just reading about:
+
+```bash
+make run-server                          # in one terminal, then:
+make example NAME=ttl                    # a key outliving one read, then expiring
+make example NAME=pipelining             # the same 500 PINGs, timed both ways
+make example NAME=pubsub                 # a forked subscriber actually receiving a publish
+make example NAME=slow-client            # a paused slow reader vs. an unaffected one
+```
+
 ---
 
 ## What it does
@@ -69,9 +80,8 @@ reply printed to stdout. It exists to make this demo runnable without
 | **Backpressure** | a slow reader's write buffer is capped - reading from it pauses until it drains, instead of growing unbounded |
 | **Metrics** | `INFO` reports connections, commands (overall and per name), bytes in/out, errors, expired keys |
 
-Every feature phase in [docs/PHASES.md](docs/PHASES.md) is done; what's
-left there (tests, benchmarks, standalone examples) is process rather
-than a capability the server is missing.
+Every phase in [docs/PHASES.md](docs/PHASES.md) is done, including the
+tests, the measured benchmarks, and the standalone `examples/` scripts.
 
 ---
 
@@ -330,7 +340,12 @@ php-mini-redis/
 │
 ├── bin/
 │   ├── server.php              # entry point: RedisServer::run()
-│   └── client.php               # one-shot RESP client, for the demo above
+│   ├── client.php              # one-shot RESP client, for the demo above
+│   └── bench.php               # throughput/latency benchmark - docs/BENCHMARKS.md
+│
+├── examples/                   # standalone scripts, one question each
+│   ├── bootstrap.php
+│   ├── ttl.php, pipelining.php, pubsub.php, slow-client.php
 │
 ├── src/
 │   │
@@ -367,18 +382,29 @@ php-mini-redis/
 │   │       ├── PingCommand.php, SetCommand.php, GetCommand.php,
 │   │       │   DelCommand.php, ExistsCommand.php, IncrCommand.php
 │   │       ├── SubscribeCommand.php, PublishCommand.php
-│   │       └── MultiCommand.php, ExecCommand.php, DiscardCommand.php
+│   │       ├── MultiCommand.php, ExecCommand.php, DiscardCommand.php
+│   │       └── InfoCommand.php
 │   │
 │   ├── Storage/
 │   │   ├── Store.php
 │   │   ├── InMemoryStore.php
 │   │   └── StoredValue.php
 │   │
+│   ├── Persistence/
+│   │   └── SnapshotStore.php
+│   │
 │   ├── PubSub/
 │   │   └── ChannelRegistry.php
 │   │
 │   ├── Transaction/
 │   │   └── TransactionManager.php
+│   │
+│   ├── Metrics/
+│   │   └── ServerMetrics.php
+│   │
+│   ├── Support/
+│   │   ├── Clock.php
+│   │   └── SystemClock.php
 │   │
 │   └── Logging/
 │       ├── Logger.php, ConsoleLogger.php, NullLogger.php
@@ -389,7 +415,8 @@ php-mini-redis/
 │   ├── ARCHITECTURE.md
 │   ├── PHASES.md
 │   ├── DECISIONS.md
-│   └── FAILURE-MODEL.md
+│   ├── FAILURE-MODEL.md
+│   └── BENCHMARKS.md
 │
 ├── README.md
 ├── composer.json
@@ -1500,20 +1527,19 @@ Publish a message and observe delivery.
 
 # Roadmap
 
-The project is implemented incrementally, thirty phases in total. The full
-list, with a Definition of Done and the exact tests behind each finished
-one, lives in [docs/PHASES.md](docs/PHASES.md) - this is the short version.
+The project was implemented incrementally, thirty phases in total, every
+one of them finished. The full list, with a Definition of Done and the
+exact tests behind each one, lives in [docs/PHASES.md](docs/PHASES.md) -
+this is the short version:
 
-**Done:** TCP server, event loop, non-blocking sockets, read/write
-buffering, RESP protocol (parser + encoder, fragmentation-tolerant),
-command model, in-memory store, `PING`/`SET`/`GET`/`DEL`/`EXISTS`/`INCR`,
-command dispatcher, multiple commands per read, pipelining, TTL (lazy and
-active expiration), event loop timers, connection timeout, Pub/Sub,
-transactions.
-
-**Ahead:** persistence, graceful shutdown, explicit RESP error handling,
-resource limits, backpressure, metrics, a benchmark pass, and a handful of
-standalone `examples/` scripts.
+TCP server, event loop, non-blocking sockets, read/write buffering, RESP
+protocol (parser + encoder, fragmentation-tolerant), command model,
+in-memory store, `PING`/`SET`/`GET`/`DEL`/`EXISTS`/`INCR`, command
+dispatcher, multiple commands per read, pipelining, TTL (lazy and active
+expiration), event loop timers, connection timeout, Pub/Sub,
+transactions, persistence, graceful shutdown, explicit RESP error
+handling, resource limits, backpressure, metrics, a measured benchmark
+pass, and a handful of standalone `examples/` scripts.
 
 ---
 

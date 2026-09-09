@@ -1,10 +1,9 @@
 # PHP Mini Redis — How It Was Built
 
-The plan this project is being built from: thirty phases, each with what it
-had to achieve and how it was confirmed done. Phases 0-21 are finished; this
-is their record, not work outstanding for them. Phases 22-30 are still
-ahead and are written the way a phase looks before it exists - a goal and
-a task list, no Definition of Done or Tests section yet.
+The plan this project was built from: thirty phases, each with what it had
+to achieve and how it was confirmed done. Every one of them is finished -
+this is kept as the record of the order things were built in and what each
+step was actually for, not as work outstanding.
 
 Two things that live elsewhere:
 
@@ -13,11 +12,10 @@ Two things that live elsewhere:
 - **What the finished system does not guarantee**:
   [FAILURE-MODEL.md](FAILURE-MODEL.md).
 
-The file was called `PLAN.md` while every phase in it was still ahead of
-the code. It is named for what most of it now contains: the phases already
-built, plus the ones that aren't yet.
+The file was called `PLAN.md` while it still was one. Everything in it is
+done, so it is named for what it now contains: the phases.
 
-Each finished phase ends with a **Tests** section: the tests that hold that
+Each phase ends with a **Tests** section: the tests that hold that
 phase's Definition of Done, named down to the individual test method where
 one test answers for one line of the plan. The whole suite runs with
 `make test`.
@@ -100,7 +98,7 @@ one test answers for one line of the plan. The whole suite runs with
 - [x] Phase 27 — Metrics
 - [x] Phase 28 — Tests
 - [x] Phase 29 — Benchmarks
-- [ ] Phase 30 — Experiments
+- [x] Phase 30 — Experiments
 
 ---
 
@@ -1047,10 +1045,32 @@ Small, standalone scripts under `examples/`, each answering one question
 
 ## Tasks
 
-* [ ] `examples/slow-client.php`
-* [ ] `examples/ttl.php`
-* [ ] `examples/pubsub.php`
-* [ ] `examples/pipelining.php`
+* [x] `examples/bootstrap.php` - the connect/send/receive boilerplate
+      shared by every script below, so each one is only about the one
+      thing it demonstrates
+* [x] `examples/ttl.php` - a key set with `EX` outlives being read once,
+      then disappears once its TTL passes
+* [x] `examples/pipelining.php` - the same 500 `PING`s, timed one at a
+      time vs. pipelined
+* [x] `examples/pubsub.php` - a forked subscriber (`pcntl_fork()`, since a
+      single-threaded script can't subscribe and publish at once) actually
+      receives what a separate connection publishes
+* [x] `examples/slow-client.php` - a connection that pipelines many GETs
+      of a sizeable value without ever reading a reply gets paused, while
+      a second, ordinary connection keeps getting fast replies throughout
+
+## Definition of Done
+
+Each script runs standalone against a real `make run-server` and answers
+its one question by what it prints, not by reading the source.
+
+## Tests
+
+None of their own, deliberately - each script's entire point is being run
+and read, not asserted on programmatically; the mechanism each one
+demonstrates already has its own test from the phase that introduced it
+(Phase 16/17 for `ttl.php`, Phase 15 for `pipelining.php`, Phase 20 for
+`pubsub.php`, Phase 26 for `slow-client.php`).
 
 ---
 
