@@ -7,18 +7,16 @@ RUN apt-get update && apt-get install -y \
         htop \
     && pecl install xdebug \
     && docker-php-ext-enable xdebug \
-    && docker-php-ext-install pcntl posix sysvmsg sysvsem sysvshm \
+    && docker-php-ext-install pcntl posix \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 ENV PHP_IDE_CONFIG serverName=php-mini-redis
 
-# start_with_request=trigger, not yes: this project runs a long-lived master
-# plus N forked workers plus forked clients, and with "yes" EVERY one of those
-# processes tries to reach a debugger that usually isn't listening. That cost
-# is invisible until it isn't - it made an 8-worker benchmark take 60s instead
-# of 0.9s, purely in process teardown. Debugging is now opt-in per run:
+# start_with_request=trigger, not yes: with "yes" every client.php run and
+# every test in the suite would try to reach a debugger that usually isn't
+# listening, for no benefit. Debugging is opt-in per run instead:
 #   XDEBUG_TRIGGER=1 php bin/server.php      (or the IDE's own trigger)
 RUN { \
         echo 'zend_extension=xdebug'; \
