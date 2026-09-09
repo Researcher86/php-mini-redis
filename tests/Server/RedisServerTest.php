@@ -7,6 +7,7 @@ namespace App\Tests\Server;
 use App\Connection\ClientConnection;
 use App\Connection\ConnectionState;
 use App\EventLoop\SelectLoop;
+use App\Persistence\SnapshotStore;
 use App\Server\RedisServer;
 use App\Server\ServerConfig;
 use App\Storage\InMemoryStore;
@@ -720,6 +721,42 @@ final class RedisServerTest extends TestCase
             }
         } finally {
             @unlink($path);
+            foreach (glob($path . '.*.tmp') ?: [] as $leftover) {
+                @unlink($leftover);
+            }
+        }
+    }
+
+    public function testAGracefulShutdownSnapshotsWhatWasWrittenSinceTheLastOne(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'mini-redis-snapshot-');
+        $loop = new SelectLoop();
+
+        try {
+            $server = new RedisServer(
+                new ServerConfig(host: '127.0.0.1', port: 0),
+                $loop,
+                snapshotPath: $path,
+                // Far longer than this test: the point is what happens
+                // between two scheduled snapshots, which is where a deploy
+                // or a SIGTERM lands.
+                snapshotIntervalSeconds: 3600.0,
+                shutdownGraceSeconds: 0.0,
+            );
+
+            $server->store()->set('written-since-the-last-snapshot', 'value');
+
+            $server->requestShutdown();
+            usleep(30_000);
+            $loop->tick(0.1);
+
+            $reloaded = new InMemoryStore();
+            (new SnapshotStore($path))->load($reloaded);
+
+            self::assertSame('value', $reloaded->get('written-since-the-last-snapshot'));
+        } finally {
+            @unlink($path);
+
             foreach (glob($path . '.*.tmp') ?: [] as $leftover) {
                 @unlink($leftover);
             }

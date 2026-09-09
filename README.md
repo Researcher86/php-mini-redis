@@ -74,7 +74,7 @@ make example NAME=slow-client            # a paused slow reader vs. an unaffecte
 | **Connection timeout** | idle connections are closed after a configurable period |
 | **Pub/Sub** | `SUBSCRIBE` / `PUBLISH`, delivered to every subscriber of a channel |
 | **Transactions** | `MULTI` / `EXEC` / `DISCARD`, queued per connection |
-| **Persistence** | optional snapshot to disk, reloaded on startup - in-memory-only unless configured |
+| **Persistence** | optional snapshot to disk, reloaded on startup, written once more on the way out - in-memory-only unless configured |
 | **Graceful shutdown** | `SIGTERM`/`SIGINT` stop new connections and drain existing ones before exiting |
 | **Limits** | capped read buffer size, arguments per command, and connection count - each replies with a RESP error instead of growing unbounded |
 | **Backpressure** | a slow reader's write buffer is capped - reading from it pauses until it drains, instead of growing unbounded |

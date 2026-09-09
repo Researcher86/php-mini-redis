@@ -262,9 +262,26 @@ final class RedisServer
 
     public function stop(): void
     {
+        $this->saveSnapshotBeforeStopping();
         $this->eventLoop->stop();
         $this->connections->closeAll();
         $this->socket->close();
+    }
+
+    /**
+     * Persistence exists so a planned restart - a deploy, a SIGTERM - does
+     * not lose the keys written since the last snapshot. Written here
+     * synchronously rather than through the forking worker: the process is
+     * about to go away, and a child outliving it is not a guarantee that
+     * anything reached disk before it did.
+     */
+    private function saveSnapshotBeforeStopping(): void
+    {
+        if ($this->snapshots === null || !$this->store instanceof InMemoryStore) {
+            return;
+        }
+
+        $this->snapshots->save($this->store);
     }
 
     /**

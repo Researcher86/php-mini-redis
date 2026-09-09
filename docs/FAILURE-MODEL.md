@@ -35,10 +35,15 @@ deploy, `SIGKILL` - loses every key, unless `RedisServer` was constructed
 with a `snapshotPath` (see [PHASES.md](PHASES.md#phase-22--persistence)).
 Even then, a snapshot only covers whatever was last written to it: without
 `snapshotIntervalSeconds` configured too, that means whatever was on disk
-the last time `saveSnapshot()` was called - a crash between the last save
-and the crash still loses everything written since. This is a point-in-time
+the last time `saveSnapshot()` was called. This is a point-in-time
 snapshot, not a write-ahead log: there is no way to recover writes newer
 than the snapshot itself.
+
+A shutdown the server gets to see - `stop()`, or `SIGTERM`/`SIGINT`
+through `requestShutdown()` - writes one final snapshot on the way out, so
+a planned restart keeps what was written since the last scheduled one. A
+`SIGKILL`, a segfault, or the machine losing power gets no such chance:
+everything after the last snapshot is gone.
 
 ## At-most-once delivery, not at-least-once
 

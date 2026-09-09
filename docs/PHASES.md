@@ -743,6 +743,9 @@ on startup.
 * [x] `RedisServer` loads a snapshot at construction time if a
       `snapshotPath` is configured, and exposes `saveSnapshot()`
 * [x] An optional repeating timer calls `saveSnapshot()` automatically
+* [x] `stop()` writes one final snapshot, synchronously, so a shutdown the
+      server sees (including `SIGTERM` through Phase 23's
+      `requestShutdown()`) keeps what was written since the last one
 * [x] Keep persistence optional - both parameters default to `null`/off
 
 ## Definition of Done
@@ -761,7 +764,8 @@ constructed with the same snapshot path afterward.
   `testLoadIntoAFreshStoreIsANoOpWhenNoSnapshotExists`.
 - [tests/Server/RedisServerTest.php](../tests/Server/RedisServerTest.php) -
   `testDataSavedByOneServerIsLoadedByTheNext` (the Definition of Done,
-  literally) and `testPeriodicSnapshotsSaveWithoutBeingAskedExplicitly`.
+  literally), `testPeriodicSnapshotsSaveWithoutBeingAskedExplicitly` and
+  `testAGracefulShutdownSnapshotsWhatWasWrittenSinceTheLastOne`.
 
 ---
 
