@@ -91,6 +91,53 @@ final class SelectLoopTest extends TestCase
         self::assertSame(1, $ticks);
     }
 
+    public function testEveryFiresARepeatingTimerEvenWithoutAnyStreams(): void
+    {
+        $now = 1000.0;
+        $loop = new SelectLoop(static function () use (&$now): float {
+            return $now;
+        });
+
+        $fired = 0;
+        $loop->every(0.01, function () use (&$fired): void {
+            $fired++;
+        });
+
+        $now += 0.01;
+        self::assertSame(0, $loop->tick(0));
+        self::assertSame(1, $fired);
+
+        $now += 0.01;
+        $loop->tick(0);
+        self::assertSame(2, $fired);
+    }
+
+    public function testATimerFiresAlongsideStreamActivity(): void
+    {
+        [$a, $b] = $this->pairOfSockets();
+        $now = 1000.0;
+        $loop = new SelectLoop(static function () use (&$now): float {
+            return $now;
+        });
+
+        $timerFired = false;
+        $loop->after(0.01, function () use (&$timerFired): void {
+            $timerFired = true;
+        });
+
+        $received = null;
+        $loop->onReadable($a, function ($stream) use (&$received): void {
+            $received = fread($stream, 1024);
+        });
+
+        fwrite($b, 'PING');
+        $now += 0.01;
+        $loop->tick(1);
+
+        self::assertSame('PING', $received);
+        self::assertTrue($timerFired);
+    }
+
     /**
      * @return array{0: resource, 1: resource}
      */

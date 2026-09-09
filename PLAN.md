@@ -80,7 +80,7 @@ The project should remain:
 - [x] Phase 15 — Pipelining
 - [x] Phase 16 — TTL
 - [ ] Phase 17 — Expiration Strategy
-- [ ] Phase 18 — Event Loop Timers
+- [x] Phase 18 — Event Loop Timers
 - [ ] Phase 19 — Connection Timeout
 - [ ] Phase 20 — Pub/Sub
 - [ ] Phase 21 — Transactions

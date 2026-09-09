@@ -29,6 +29,20 @@ interface EventLoop
     public function removeWritable(mixed $stream): void;
 
     /**
+     * Schedules $callback to run every $intervalSeconds.
+     *
+     * @param callable(): void $callback
+     */
+    public function every(float $intervalSeconds, callable $callback): Timer;
+
+    /**
+     * Schedules $callback to run once, after $delaySeconds.
+     *
+     * @param callable(): void $callback
+     */
+    public function after(float $delaySeconds, callable $callback): Timer;
+
+    /**
      * Runs until stop() is called.
      */
     public function run(): void;
