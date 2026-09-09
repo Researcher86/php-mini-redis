@@ -702,6 +702,8 @@ PONG
 
 ```text
 SET key value
+
+SET key value EX seconds
 ```
 
 Example:
@@ -709,6 +711,11 @@ Example:
 ```text
 SET user:1 Tanat
 ```
+
+`EX` takes a positive number of seconds. Zero, a negative number, or one
+too large for the platform's integer is refused with `ERR invalid expire
+time in 'set' command` rather than accepted as a key nothing can ever
+read.
 
 ---
 

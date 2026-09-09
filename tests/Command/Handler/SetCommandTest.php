@@ -11,6 +11,7 @@ use App\Protocol\RespValue;
 use App\Storage\InMemoryStore;
 use App\Tests\Support\CreatesTestConnections;
 use App\Tests\Support\FakeClock;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class SetCommandTest extends TestCase
@@ -79,5 +80,41 @@ final class SetCommandTest extends TestCase
         $result = (new SetCommand())->handle($command, new InMemoryStore(), $this->createConnection());
 
         self::assertSame(RespType::Error, $result->type);
+    }
+
+    /**
+     * An expire time that cannot produce a readable key: zero and negative
+     * are already in the past, and a number too big for the platform's
+     * integer silently clamps to something the client never asked for.
+     */
+    #[DataProvider('invalidExpireTimes')]
+    public function testRejectsAnExpireTimeThatWouldNeverProduceAReadableKey(string $ttl): void
+    {
+        $store = new InMemoryStore();
+        $command = Command::fromRespValue(RespValue::array([
+            RespValue::bulkString('SET'),
+            RespValue::bulkString('session'),
+            RespValue::bulkString('abc'),
+            RespValue::bulkString('EX'),
+            RespValue::bulkString($ttl),
+        ]));
+
+        $result = (new SetCommand())->handle($command, $store, $this->createConnection());
+
+        self::assertSame(RespType::Error, $result->type);
+        self::assertSame("ERR invalid expire time in 'set' command", $result->value);
+
+        // Not written at all, rather than written and instantly unreadable.
+        self::assertFalse($store->has('session'));
+    }
+
+    /** @return array<string, array{string}> */
+    public static function invalidExpireTimes(): array
+    {
+        return [
+            'zero' => ['0'],
+            'negative' => ['-1'],
+            'past the platform integer' => ['99999999999999999999'],
+        ];
     }
 }
