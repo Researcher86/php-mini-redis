@@ -413,6 +413,83 @@ final class RedisServerTest extends TestCase
         }
     }
 
+    public function testPublishingToAConnectionThatIsAlreadyClosedIsANoOp(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), $loop);
+
+        try {
+            $subscriberClient = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($subscriberClient, $errstr);
+            $subscriber = $server->acceptClient(5);
+            self::assertInstanceOf(ClientConnection::class, $subscriber);
+
+            fwrite($subscriberClient, "*2\r\n\$9\r\nSUBSCRIBE\r\n\$4\r\nnews\r\n");
+            $loop->tick(1);
+            fread($subscriberClient, 1024);
+
+            // Stands in for the server dropping this connection itself: a
+            // write to a peer that has gone away fails, and the connection
+            // is closed on the spot - while a PUBLISH already in flight (or
+            // the rest of a pipeline) still holds a reference to it.
+            $subscriber->close();
+
+            $publisherClient = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($publisherClient, $errstr);
+            $server->acceptClient(5);
+
+            fwrite($publisherClient, "*3\r\n\$7\r\nPUBLISH\r\n\$4\r\nnews\r\n\$5\r\nhello\r\n");
+            $loop->tick(1);
+
+            // Delivery was skipped rather than attempted on a closed socket,
+            // which is a TypeError in PHP 8 - not a write that just fails.
+            self::assertSame(':1' . "\r\n", fread($publisherClient, 1024));
+
+            fclose($subscriberClient);
+            fclose($publisherClient);
+        } finally {
+            $server->stop();
+        }
+    }
+
+    public function testAClientThatVanishesMidPipelineDoesNotTakeTheServerDown(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(
+            new ServerConfig(host: '127.0.0.1', port: 0),
+            $loop,
+            maxWriteBufferBytes: 1000,
+        );
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+            self::assertInstanceOf(ClientConnection::class, $server->acceptClient(5));
+
+            // Replies far too big to leave the server's write buffer in one
+            // flush, pipelined by a client that then vanishes without
+            // reading any of them: the first reply's write fails, dropping
+            // the connection, and every remaining command in the same read
+            // used to be answered onto its now-closed socket.
+            $server->store()->set('big', str_repeat('x', 4 * 1024 * 1024));
+            fwrite($client, str_repeat("*2\r\n\$3\r\nGET\r\n\$3\r\nbig\r\n", 5));
+            usleep(50_000);
+            fclose($client);
+            usleep(100_000);
+
+            for ($i = 0; $i < 5; $i++) {
+                $loop->tick(0.05);
+            }
+
+            self::assertSame(0, $server->connectedClientCount());
+
+            $paused = new ReflectionProperty($server, 'pausedConnections');
+            self::assertSame([], $paused->getValue($server));
+        } finally {
+            $server->stop();
+        }
+    }
+
     public function testMultiQueuesCommandsAndExecRunsThemInOrder(): void
     {
         $loop = new SelectLoop();

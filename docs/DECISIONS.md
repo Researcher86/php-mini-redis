@@ -160,6 +160,31 @@ buy tighter precision at the cost of one more constructor parameter and one
 more thing to explain, for a project whose point is the mechanism ("time
 becomes a first-class event loop event"), not exact SLA-grade timing.
 
+## A closed connection is never written to, only skipped
+
+`RedisServer` drops a connection the moment a write to it fails
+(`flushWriteBuffer()`), which closes its socket. Two callers still hold a
+reference to that connection afterwards and used to keep writing to it:
+the rest of the pipeline being answered in `processBufferedCommands()`,
+and a `PUBLISH` fanning out to a subscriber list captured before the
+delivery started. On a closed stream `fwrite()` raises a `TypeError`, not
+a failed write - so one client that pipelined a few large replies and
+disconnected before reading any of them took the whole server down with
+it.
+
+The rule is now stated once, in `queueForWrite()`: a connection in state
+`Closed` is skipped rather than written to. `processBufferedCommands()`
+stops early for the same reason - the remaining commands have nobody left
+to answer, including the protocol-error reply at the end.
+
+The same failure left a second mark: `pauseReadingIfWriteBufferTooLarge()`
+ran *after* the failed flush and put the dropped connection's id back into
+`pausedConnections`, which `disconnectClient()` had just cleaned out.
+Nothing removes it again, and because ids are socket resource ids they get
+reused - the next connection to land on that id looks paused, so
+backpressure silently stops applying to it. Pinned by
+`RedisServerTest::testAClientThatVanishesMidPipelineDoesNotTakeTheServerDown`.
+
 ## The loop forgets closed streams instead of trusting owners to deregister
 
 `SelectLoop` does not own the sockets it watches, and their owners close

@@ -350,10 +350,17 @@ final class RedisServer
         }
 
         foreach ($values as $value) {
+            // Answering one command can drop the connection - a write that
+            // fails because the peer has gone away closes it on the spot.
+            // The rest of the pipeline then has nobody left to answer.
+            if ($connection->state() === ConnectionState::Closed) {
+                return;
+            }
+
             $this->executeValue($connection, $value);
         }
 
-        if ($error === null) {
+        if ($error === null || $connection->state() === ConnectionState::Closed) {
             return;
         }
 
@@ -408,8 +415,26 @@ final class RedisServer
      */
     private function queueForWrite(ClientConnection $connection, string $bytes): void
     {
+        // A connection that was already dropped has a closed socket, and
+        // fwrite() on a closed stream is a TypeError rather than a failed
+        // write - so this has to be a no-op, not a best-effort attempt.
+        // Both a pipeline whose earlier reply failed and a PUBLISH to a
+        // subscriber dropped moments ago arrive here.
+        if ($connection->state() === ConnectionState::Closed) {
+            return;
+        }
+
         $connection->appendToWriteBuffer($bytes);
         $this->flushWriteBuffer($connection);
+
+        // The flush above may have dropped the connection, which already
+        // cleaned up its paused-reading bookkeeping - pausing it now would
+        // put an entry back that nothing will ever remove, and leave the
+        // next connection to reuse that socket id looking paused.
+        if ($connection->state() === ConnectionState::Closed) {
+            return;
+        }
+
         $this->pauseReadingIfWriteBufferTooLarge($connection);
     }
 
