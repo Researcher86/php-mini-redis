@@ -28,13 +28,17 @@ crash - that is an operational concern deliberately left to whoever runs
 it (`systemd`, Docker's own restart policy, or a process manager), the same
 way `php-worker-pool`'s Master has no supervisor of its own either.
 
-## In-memory only (until Phase 22)
+## In-memory only, unless a snapshot path is configured
 
 `InMemoryStore` holds every key in a PHP array. A process restart - crash,
-deploy, `SIGKILL` - loses every key. Phase 22 (Persistence) will add an
-optional snapshot to disk; it is explicitly optional even once built (see
-[PHASES.md](PHASES.md#phase-22--persistence)), and until it exists there is
-no persistence at all.
+deploy, `SIGKILL` - loses every key, unless `RedisServer` was constructed
+with a `snapshotPath` (see [PHASES.md](PHASES.md#phase-22--persistence)).
+Even then, a snapshot only covers whatever was last written to it: without
+`snapshotIntervalSeconds` configured too, that means whatever was on disk
+the last time `saveSnapshot()` was called - a crash between the last save
+and the crash still loses everything written since. This is a point-in-time
+snapshot, not a write-ahead log: there is no way to recover writes newer
+than the snapshot itself.
 
 ## At-most-once delivery, not at-least-once
 

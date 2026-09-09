@@ -62,6 +62,38 @@ final class InMemoryStore implements Store
     }
 
     /**
+     * A serializable copy of every entry, TTL included, for persistence.
+     *
+     * @return array<string, array{value: mixed, expiresAt: float|null}>
+     */
+    public function snapshot(): array
+    {
+        $entries = [];
+
+        foreach ($this->data as $key => $entry) {
+            $entries[$key] = ['value' => $entry->value, 'expiresAt' => $entry->expiresAt];
+        }
+
+        return $entries;
+    }
+
+    /**
+     * Replaces the current contents with a previously taken snapshot().
+     * Entries already expired by the time this runs are simply not
+     * restored - the same lazy-expiration rule applies as everywhere else.
+     *
+     * @param array<string, array{value: mixed, expiresAt: float|null}> $entries
+     */
+    public function restore(array $entries): void
+    {
+        $this->data = [];
+
+        foreach ($entries as $key => $entry) {
+            $this->data[$key] = new StoredValue($entry['value'], $entry['expiresAt']);
+        }
+    }
+
+    /**
      * Reads the entry for $key, lazily removing and treating it as absent
      * if its TTL has expired.
      */

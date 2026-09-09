@@ -17,6 +17,7 @@ use App\Connection\ConnectionManager;
 use App\Connection\ConnectionState;
 use App\EventLoop\EventLoop;
 use App\EventLoop\SelectLoop;
+use App\Persistence\SnapshotStore;
 use App\Protocol\ProtocolException;
 use App\Protocol\RespEncoder;
 use App\Protocol\RespStreamReader;
@@ -49,6 +50,7 @@ final class RedisServer
     private ?float $idleTimeoutSeconds;
     private ChannelRegistry $channels;
     private TransactionManager $transactions;
+    private ?SnapshotStore $snapshots;
 
     public function __construct(
         ServerConfig $config,
@@ -57,6 +59,8 @@ final class RedisServer
         ?Store $store = null,
         float $expirationSweepIntervalSeconds = 1.0,
         ?float $idleTimeoutSeconds = null,
+        ?string $snapshotPath = null,
+        ?float $snapshotIntervalSeconds = null,
     ) {
         $this->socket = new ServerSocket($config);
         $this->connections = new ConnectionManager();
@@ -67,6 +71,11 @@ final class RedisServer
         $this->encoder = new RespEncoder();
         $this->expirationSweepIntervalSeconds = $expirationSweepIntervalSeconds;
         $this->idleTimeoutSeconds = $idleTimeoutSeconds;
+        $this->snapshots = $snapshotPath === null ? null : new SnapshotStore($snapshotPath);
+
+        if ($this->snapshots !== null && $this->store instanceof InMemoryStore) {
+            $this->snapshots->load($this->store);
+        }
 
         // Pub/Sub needs access to connections beyond the one issuing the
         // command (PUBLISH writes to every subscriber), which plain
@@ -98,6 +107,24 @@ final class RedisServer
             $this->eventLoop->every($this->idleTimeoutSeconds, function (): void {
                 $this->closeIdleConnections();
             });
+        }
+
+        if ($this->snapshots !== null && $snapshotIntervalSeconds !== null) {
+            $this->eventLoop->every($snapshotIntervalSeconds, function (): void {
+                $this->saveSnapshot();
+            });
+        }
+    }
+
+    /**
+     * Writes the store's current contents to the configured snapshot path.
+     * A no-op if no snapshot path was configured, or the store isn't an
+     * InMemoryStore.
+     */
+    public function saveSnapshot(): void
+    {
+        if ($this->snapshots !== null && $this->store instanceof InMemoryStore) {
+            $this->snapshots->save($this->store);
         }
     }
 

@@ -554,4 +554,61 @@ final class RedisServerTest extends TestCase
             $server->stop();
         }
     }
+
+    public function testDataSavedByOneServerIsLoadedByTheNext(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'mini-redis-snapshot-');
+
+        try {
+            $first = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), snapshotPath: $path);
+            $first->store()->set('name', 'Tanat');
+            $first->saveSnapshot();
+            $first->stop();
+
+            $second = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), snapshotPath: $path);
+
+            try {
+                self::assertSame('Tanat', $second->store()->get('name'));
+            } finally {
+                $second->stop();
+            }
+        } finally {
+            @unlink($path);
+            @unlink($path . '.tmp');
+        }
+    }
+
+    public function testPeriodicSnapshotsSaveWithoutBeingAskedExplicitly(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'mini-redis-snapshot-');
+        $loop = new SelectLoop();
+
+        try {
+            $server = new RedisServer(
+                new ServerConfig(host: '127.0.0.1', port: 0),
+                $loop,
+                snapshotPath: $path,
+                snapshotIntervalSeconds: 0.01,
+            );
+
+            try {
+                $server->store()->set('name', 'Tanat');
+                usleep(20_000);
+                $loop->tick(0.5);
+
+                $reloaded = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), snapshotPath: $path);
+
+                try {
+                    self::assertSame('Tanat', $reloaded->store()->get('name'));
+                } finally {
+                    $reloaded->stop();
+                }
+            } finally {
+                $server->stop();
+            }
+        } finally {
+            @unlink($path);
+            @unlink($path . '.tmp');
+        }
+    }
 }

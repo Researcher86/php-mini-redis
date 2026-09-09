@@ -92,7 +92,7 @@ one test answers for one line of the plan. The whole suite runs with
 - [x] Phase 19 — Connection Timeout
 - [x] Phase 20 — Pub/Sub
 - [x] Phase 21 — Transactions
-- [ ] Phase 22 — Persistence
+- [x] Phase 22 — Persistence
 - [ ] Phase 23 — Graceful Shutdown
 - [ ] Phase 24 — Error Handling
 - [ ] Phase 25 — Limits
@@ -737,9 +737,31 @@ on startup.
 
 ## Tasks
 
-* [ ] Serialize the store to a file
-* [ ] Load a snapshot on startup
-* [ ] Keep persistence optional - it is not the core purpose of the project
+* [x] `InMemoryStore::snapshot()` / `restore()` (value + TTL, per key)
+* [x] `SnapshotStore` writes to a temp file and renames into place (a
+      crash mid-write cannot leave a half-written snapshot)
+* [x] `RedisServer` loads a snapshot at construction time if a
+      `snapshotPath` is configured, and exposes `saveSnapshot()`
+* [x] An optional repeating timer calls `saveSnapshot()` automatically
+* [x] Keep persistence optional - both parameters default to `null`/off
+
+## Definition of Done
+
+A key set by one `RedisServer` instance survives into a second instance
+constructed with the same snapshot path afterward.
+
+## Tests
+
+- [tests/Storage/InMemoryStoreTest.php](../tests/Storage/InMemoryStoreTest.php) -
+  `testSnapshotAndRestoreRoundTripValuesAndTtls`,
+  `testRestoreReplacesWhateverWasThereBefore`.
+- [tests/Persistence/SnapshotStoreTest.php](../tests/Persistence/SnapshotStoreTest.php) -
+  `testSavedValuesAreRestoredIntoAnotherStore`, `testATtlSurvivesTheRoundTrip`,
+  `testSaveOverwritesAPreviousSnapshot`,
+  `testLoadIntoAFreshStoreIsANoOpWhenNoSnapshotExists`.
+- [tests/Server/RedisServerTest.php](../tests/Server/RedisServerTest.php) -
+  `testDataSavedByOneServerIsLoadedByTheNext` (the Definition of Done,
+  literally) and `testPeriodicSnapshotsSaveWithoutBeingAskedExplicitly`.
 
 ---
 

@@ -140,4 +140,37 @@ final class InMemoryStoreTest extends TestCase
         self::assertTrue($store->has('forever'));
         self::assertSame(0, $store->sweepExpired());
     }
+
+    public function testSnapshotAndRestoreRoundTripValuesAndTtls(): void
+    {
+        $now = 1000.0;
+        $clock = static function () use (&$now): float {
+            return $now;
+        };
+        $store = new InMemoryStore($clock);
+        $store->set('name', 'Tanat');
+        $store->set('session', 'abc', ttlSeconds: 60);
+
+        $snapshot = $store->snapshot();
+
+        $restored = new InMemoryStore($clock);
+        $restored->restore($snapshot);
+
+        self::assertSame('Tanat', $restored->get('name'));
+        self::assertSame('abc', $restored->get('session'));
+
+        $now += 60;
+        self::assertNull($restored->get('session'));
+    }
+
+    public function testRestoreReplacesWhateverWasThereBefore(): void
+    {
+        $store = new InMemoryStore();
+        $store->set('stale', 'value');
+
+        $store->restore(['fresh' => ['value' => 'value', 'expiresAt' => null]]);
+
+        self::assertFalse($store->has('stale'));
+        self::assertSame('value', $store->get('fresh'));
+    }
 }
