@@ -58,4 +58,26 @@ final class RespStreamReaderTest extends TestCase
         self::assertSame('PING', $values[0]->value);
         self::assertSame(7, $consumed);
     }
+
+    public function testKeepsValuesParsedBeforeAMalformedTailAndReportsTheError(): void
+    {
+        $reader = new RespStreamReader();
+
+        [$values, $consumed, $error] = $reader->readAll("+PING\r\nbad\r\n");
+
+        self::assertCount(1, $values);
+        self::assertSame('PING', $values[0]->value);
+        self::assertSame(7, $consumed);
+        self::assertInstanceOf(\App\Protocol\ProtocolException::class, $error);
+    }
+
+    public function testReportsNoErrorForAWellFormedBuffer(): void
+    {
+        $reader = new RespStreamReader();
+
+        [$values, $consumed, $error] = $reader->readAll("+PING\r\n");
+
+        self::assertCount(1, $values);
+        self::assertNull($error);
+    }
 }

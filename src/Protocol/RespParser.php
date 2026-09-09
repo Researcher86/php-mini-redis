@@ -14,11 +14,11 @@ namespace App\Protocol;
 final readonly class RespParser
 {
     /**
-     * @return array{0: RespValue, 1: int}|null Null means more bytes are needed; the int is how many bytes were consumed.
+     * @return array{0: RespValue, 1: int}|null Null means more bytes are needed; the int is how many bytes were consumed. $offset allows parsing the next value out of the same buffer without re-slicing it.
      */
-    public function parse(string $buffer): ?array
+    public function parse(string $buffer, int $offset = 0): ?array
     {
-        return $this->parseValue($buffer, 0);
+        return $this->parseValue($buffer, $offset);
     }
 
     /** @return array{0: RespValue, 1: int}|null */

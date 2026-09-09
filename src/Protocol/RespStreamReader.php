@@ -19,25 +19,32 @@ final readonly class RespStreamReader
     }
 
     /**
-     * @return array{0: list<RespValue>, 1: int} The parsed values, and how many bytes of $buffer they consumed in total.
+     * @return array{0: list<RespValue>, 1: int, 2: ProtocolException|null} The parsed values, how many bytes of $buffer they consumed in total, and - if the buffer ran out of valid RESP before its end - the failure. Values parsed before the failing byte are still returned, so the caller can apply what arrived in good order before acting on the error.
      */
     public function readAll(string $buffer): array
     {
         $values = [];
         $offset = 0;
+        $error = null;
 
-        while (true) {
-            $parsed = $this->parser->parse(substr($buffer, $offset));
+        try {
+            while (true) {
+                $parsed = $this->parser->parse($buffer, $offset);
 
-            if ($parsed === null) {
-                break;
+                if ($parsed === null) {
+                    break;
+                }
+
+                // The parser reports the absolute end position in $buffer
+                // (it indexes straight into it), so carry that forward as
+                // the next start offset rather than re-slicing the buffer.
+                [$value, $offset] = $parsed;
+                $values[] = $value;
             }
-
-            [$value, $consumed] = $parsed;
-            $values[] = $value;
-            $offset += $consumed;
+        } catch (ProtocolException $exception) {
+            $error = $exception;
         }
 
-        return [$values, $offset];
+        return [$values, $offset, $error];
     }
 }
