@@ -14,42 +14,52 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Drives a real server over a real socket: the client blocks waiting for
- * replies, so the server cannot share this process's single thread with
- * it. It runs as its own process - the actual bin/server.php, started on
- * a port the kernel picks and stopped again in tearDown().
+ * replies, so the server cannot share this process's single thread with it -
+ * it runs in a forked child, started fresh for each test and stopped again
+ * in tearDown().
  */
 final class RedisClientTest extends TestCase
 {
     private const string HOST = '127.0.0.1';
 
-    /** @var resource */
-    private mixed $server;
-
-    /** @var array<int, resource> */
-    private array $pipes = [];
-
     private int $port = 0;
+    private int $serverPid = 0;
     private RedisClient $client;
 
     protected function setUp(): void
     {
-        $server = proc_open(
-            ['php', 'bin/server.php'],
-            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
-            $pipes,
-            dirname(__DIR__, 2),
-            // Port 0 lets the kernel pick a free one, so parallel runs (and
-            // a developer's own server on 6380) never collide; the server
-            // reports which one it got on its first line of output.
-            ['REDIS_HOST' => self::HOST, 'REDIS_PORT' => '0'],
-        );
+        // Bound before the fork so the parent can read back the port the
+        // kernel picked; the child inherits the listening socket and is the
+        // only one that ever accepts on it.
+        $server = new RedisServer(new ServerConfig(host: self::HOST, port: 0));
+        [, $port] = explode(':', $server->localAddress());
+        $this->port = (int) $port;
 
-        self::assertIsResource($server, 'Could not start bin/server.php');
+        $pid = pcntl_fork();
+        self::assertNotSame(-1, $pid, 'pcntl_fork() failed');
 
-        $this->server = $server;
-        $this->pipes = $pipes;
+        if ($pid === 0) {
+            // PHPUnit captures a test's output by keeping an output buffer
+            // open, and fork() hands the child a copy of it - which it would
+            // flush on the way out, printing the run's own progress a second
+            // time. It is the parent's buffer; the child gives it up.
+            while (ob_get_level() > 0) {
+                ob_end_clean();
+            }
 
-        $this->port = $this->portItIsListeningOn();
+            // Last-resort backstop, for a child that somehow outlives the
+            // test: SIGALRM's default action ends the process, and nothing
+            // here installs a handler for it.
+            pcntl_alarm(15);
+
+            $server->run();
+
+            exit(0);
+        }
+
+        $this->serverPid = $pid;
+        $server->stop(); // the parent's own copy of the listening socket
+
         $this->client = $this->newClient();
     }
 
@@ -57,52 +67,22 @@ final class RedisClientTest extends TestCase
     {
         $this->client->close();
 
-        // SIGTERM is the graceful path the server implements; the kill that
-        // follows is only there so a server that ignores it cannot hang the
+        // SIGTERM is the graceful path the server implements, and the wait
+        // below is bounded rather than a plain waitpid(): a child that
+        // never gets there must cost this test two seconds, not the whole
         // suite.
-        proc_terminate($this->server, SIGTERM);
+        posix_kill($this->serverPid, SIGTERM);
 
-        for ($i = 0; $i < 40 && proc_get_status($this->server)['running']; $i++) {
+        for ($i = 0; $i < 40; $i++) {
+            if (pcntl_waitpid($this->serverPid, $status, WNOHANG) !== 0) {
+                return;
+            }
+
             usleep(50_000);
         }
 
-        if (proc_get_status($this->server)['running']) {
-            proc_terminate($this->server, SIGKILL);
-        }
-
-        foreach ($this->pipes as $pipe) {
-            fclose($pipe);
-        }
-
-        proc_close($this->server);
-    }
-
-    /**
-     * Reads the "Listening on 127.0.0.1:NNNNN" line the server prints once
-     * its socket is bound - which doubles as the signal that it is up, so
-     * nothing here has to sleep and hope.
-     */
-    private function portItIsListeningOn(): int
-    {
-        stream_set_blocking($this->pipes[1], false);
-
-        $deadline = microtime(true) + 5.0;
-        $output = '';
-
-        while (!str_contains($output, "\n") && microtime(true) < $deadline) {
-            $read = [$this->pipes[1]];
-            $write = [];
-            $except = null;
-
-            if (stream_select($read, $write, $except, 0, 100_000) > 0) {
-                $output .= (string) fread($this->pipes[1], 1024);
-            }
-        }
-
-        self::assertMatchesRegularExpression('/Listening on [^:]+:(\d+)/', $output, 'The server never reported a port.');
-        preg_match('/Listening on [^:]+:(\d+)/', $output, $matches);
-
-        return (int) $matches[1];
+        posix_kill($this->serverPid, SIGKILL);
+        pcntl_waitpid($this->serverPid, $status);
     }
 
     public function testPingSetAndGetRoundTrip(): void
