@@ -1,9 +1,11 @@
 # PHP Mini Redis — How It Was Built
 
-The plan this project was built from: thirty phases, each with what it had
-to achieve and how it was confirmed done. Every one of them is finished -
-this is kept as the record of the order things were built in and what each
-step was actually for, not as work outstanding.
+The plan this project was built from: thirty-eight phases, Phase 0 through
+Phase 37, each with what it had to achieve and how it was confirmed done.
+Every one of them is finished except Phase 36, the epoll reactor, which is
+deferred and says why - this is kept as the record of the order things
+were built in and what each step was actually for, not as work
+outstanding.
 
 Two things that live elsewhere:
 
@@ -1369,11 +1371,13 @@ Pub/Sub fan-out to many subscribers, and memory growth.
 * [x] Load-test scripts under `benchmarks/`:
   - `pipeline.php` - one client driving many commands back-to-back without
     waiting per command, measuring throughput
-  - `slow-client.php` - a subscriber that reads slowly (or not at all),
-    exercising the Phase 32 backpressure and Phase 19 idle timeout
   - `pubsub-fanout.php` - a publisher and many subscribers, measuring
     message fan-out
   - `memory.php` - write many keys and report peak/current memory usage
+* [x] The slow-reader shape is `examples/slow-client.php` rather than a
+      fourth benchmark: it exercises the Phase 32 backpressure and Phase 19
+      idle timeout, and what it has to show is one paused connection next
+      to an unaffected one - something to watch, not a number to compare
 * [x] Document how to run each in `benchmarks/README.md`
 
 ## Definition of Done

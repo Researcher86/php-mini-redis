@@ -80,8 +80,11 @@ make example NAME=slow-client            # a paused slow reader vs. an unaffecte
 | **Backpressure** | a slow reader's write buffer is capped - reading from it pauses until it drains, instead of growing unbounded |
 | **Metrics** | `INFO` reports connections, commands (overall and per name), bytes in/out, errors, expired keys |
 
-Every phase in [docs/PHASES.md](docs/PHASES.md) is done, including the
-tests, the measured benchmarks, and the standalone `examples/` scripts.
+Every phase in [docs/PHASES.md](docs/PHASES.md) is done - the tests, the
+measured benchmarks, and the standalone `examples/` scripts included -
+bar one: Phase 36's epoll reactor, deferred because this environment has
+no `ext-ffi` to build it on. The phase says so, and why, rather than
+quietly disappearing.
 
 ---
 
@@ -361,6 +364,7 @@ php-mini-redis/
 │   ├── EventLoop/
 │   │   ├── EventLoop.php
 │   │   ├── SelectLoop.php
+│   │   ├── EventLoopMetrics.php
 │   │   ├── Timer.php
 │   │   └── TimerManager.php
 │   │
@@ -395,7 +399,8 @@ php-mini-redis/
 │   │   └── StoredValue.php
 │   │
 │   ├── Persistence/
-│   │   └── SnapshotStore.php
+│   │   ├── SnapshotStore.php
+│   │   └── ForkingSnapshotWorker.php
 │   │
 │   ├── PubSub/
 │   │   └── ChannelRegistry.php
@@ -1540,8 +1545,9 @@ Publish a message and observe delivery.
 
 # Roadmap
 
-The project was implemented incrementally, thirty phases in total, every
-one of them finished. The full list, with a Definition of Done and the
+The project was implemented incrementally, thirty-eight phases in total
+(Phase 0 through Phase 37), every one of them finished except the
+deferred epoll reactor. The full list, with a Definition of Done and the
 exact tests behind each one, lives in [docs/PHASES.md](docs/PHASES.md) -
 this is the short version:
 
