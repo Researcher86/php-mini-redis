@@ -8,6 +8,7 @@ use App\Command\Command;
 use App\Command\CommandHandler;
 use App\Connection\ClientConnection;
 use App\Connection\ConnectionManager;
+use App\EventLoop\EventLoopMetrics;
 use App\Metrics\ServerMetrics;
 use App\Protocol\RespValue;
 use App\Storage\Store;
@@ -21,6 +22,7 @@ final readonly class InfoCommand implements CommandHandler
     public function __construct(
         private ServerMetrics $metrics,
         private ConnectionManager $connections,
+        private EventLoopMetrics $eventLoop,
     ) {
     }
 
@@ -34,6 +36,10 @@ final readonly class InfoCommand implements CommandHandler
             'total_bytes_written:' . $this->metrics->bytesWritten(),
             'total_errors:' . $this->metrics->errors(),
             'expired_keys:' . $this->metrics->keysExpired(),
+            'eventloop_iterations:' . $this->eventLoop->iterations(),
+            'eventloop_busy_sec:' . $this->eventLoop->busySeconds(),
+            'eventloop_idle_sec:' . $this->eventLoop->idleSeconds(),
+            'eventloop_max_lag_sec:' . $this->eventLoop->maxLagSeconds(),
         ];
 
         foreach ($this->metrics->commandsByType() as $name => $count) {

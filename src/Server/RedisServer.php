@@ -132,7 +132,7 @@ final class RedisServer
         $this->dispatcher->register('DISCARD', new DiscardCommand($this->transactions));
         $this->dispatcher->register('EXEC', new ExecCommand($this->transactions, $this->dispatcher));
 
-        $this->dispatcher->register('INFO', new InfoCommand($this->metrics, $this->connections));
+        $this->dispatcher->register('INFO', new InfoCommand($this->metrics, $this->connections, $this->eventLoop->metrics()));
 
         // Active expiration: expired keys are also removed on a timer,
         // instead of only being noticed lazily the next time they are read.

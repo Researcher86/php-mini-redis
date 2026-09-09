@@ -7,6 +7,7 @@ namespace App\Tests\Command\Handler;
 use App\Command\Command;
 use App\Command\Handler\InfoCommand;
 use App\Connection\ConnectionManager;
+use App\EventLoop\EventLoopMetrics;
 use App\Metrics\ServerMetrics;
 use App\Protocol\RespType;
 use App\Protocol\RespValue;
@@ -29,10 +30,14 @@ final class InfoCommandTest extends TestCase
         $metrics->recordError();
         $metrics->recordExpiredKeys(4);
 
+        $eventLoop = new EventLoopMetrics();
+        $eventLoop->recordIteration(0.5, 1.5);
+        $eventLoop->recordIteration(0.25, 0.25);
+
         $connections = new ConnectionManager();
         $command = Command::fromRespValue(RespValue::array([RespValue::bulkString('INFO')]));
 
-        $result = (new InfoCommand($metrics, $connections))->handle($command, new InMemoryStore(), $this->createConnection());
+        $result = (new InfoCommand($metrics, $connections, $eventLoop))->handle($command, new InMemoryStore(), $this->createConnection());
 
         self::assertSame(RespType::BulkString, $result->type);
         self::assertStringContainsString('connected_clients:0', $result->value);
@@ -42,6 +47,10 @@ final class InfoCommandTest extends TestCase
         self::assertStringContainsString('total_bytes_written:50', $result->value);
         self::assertStringContainsString('total_errors:1', $result->value);
         self::assertStringContainsString('expired_keys:4', $result->value);
+        self::assertStringContainsString('eventloop_iterations:2', $result->value);
+        self::assertStringContainsString('eventloop_busy_sec:0.75', $result->value);
+        self::assertStringContainsString('eventloop_idle_sec:1.75', $result->value);
+        self::assertStringContainsString('eventloop_max_lag_sec:0.5', $result->value);
         self::assertStringContainsString('cmdstat_get:calls=2', $result->value);
     }
 
@@ -52,7 +61,7 @@ final class InfoCommandTest extends TestCase
         $connections->add($this->createConnection());
 
         $command = Command::fromRespValue(RespValue::array([RespValue::bulkString('INFO')]));
-        $result = (new InfoCommand(new ServerMetrics(), $connections))
+        $result = (new InfoCommand(new ServerMetrics(), $connections, new EventLoopMetrics()))
             ->handle($command, new InMemoryStore(), $this->createConnection());
 
         self::assertStringContainsString('connected_clients:2', $result->value);

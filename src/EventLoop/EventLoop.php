@@ -48,4 +48,10 @@ interface EventLoop
     public function run(): void;
 
     public function stop(): void;
+
+    /**
+     * Observability counters for this loop's own behavior (iterations,
+     * busy/idle time, max lag) - see EventLoopMetrics.
+     */
+    public function metrics(): EventLoopMetrics;
 }

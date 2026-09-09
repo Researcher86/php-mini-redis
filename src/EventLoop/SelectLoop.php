@@ -21,11 +21,13 @@ final class SelectLoop implements EventLoop
 
     private bool $running = false;
     private TimerManager $timers;
+    private EventLoopMetrics $metrics;
 
     public function __construct(
         private readonly Clock $clock = new SystemClock(),
     ) {
         $this->timers = new TimerManager();
+        $this->metrics = new EventLoopMetrics();
     }
 
     public function onReadable(mixed $stream, callable $listener): void
@@ -72,6 +74,11 @@ final class SelectLoop implements EventLoop
         $this->running = false;
     }
 
+    public function metrics(): EventLoopMetrics
+    {
+        return $this->metrics;
+    }
+
     /**
      * Runs a single wait-and-dispatch pass. Returns the number of streams
      * that were ready, or 0 if the wait timed out (or only a timer fired).
@@ -89,6 +96,7 @@ final class SelectLoop implements EventLoop
             }
 
             $this->timers->tick($this->clock->now());
+            $this->metrics->recordIteration(0.0, $wait ?? 0.0);
 
             return 0;
         }
@@ -97,11 +105,16 @@ final class SelectLoop implements EventLoop
         $seconds = $wait === null ? null : (int) floor($wait);
         $microseconds = $wait === null ? null : (int) (($wait - $seconds) * 1_000_000);
 
+        $waitStart = hrtime(true);
         $ready = @stream_select($read, $write, $except, $seconds, $microseconds);
+        $idleSeconds = (hrtime(true) - $waitStart) / 1_000_000_000;
 
+        $busyStart = hrtime(true);
         $this->timers->tick($this->clock->now());
 
         if ($ready === false || $ready === 0) {
+            $this->metrics->recordIteration(0.0, $idleSeconds);
+
             return 0;
         }
 
@@ -120,6 +133,9 @@ final class SelectLoop implements EventLoop
                 ($this->writeListeners[$id][1])($stream);
             }
         }
+
+        $busySeconds = (hrtime(true) - $busyStart) / 1_000_000_000;
+        $this->metrics->recordIteration($busySeconds, $idleSeconds);
 
         return $ready;
     }

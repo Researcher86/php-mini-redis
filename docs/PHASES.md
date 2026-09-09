@@ -1232,6 +1232,48 @@ delete, restore) is identical to before and pinned by tests.
 
 ---
 
+# Phase 34 — Event Loop Metrics
+
+## Goal
+
+The loop's own health was invisible: nothing in INFO said how many
+wait/dispatch passes had happened, how long the loop spent busy dispatching
+callbacks versus idle in `select()`, or how far a single slow callback could
+push the loop away from servicing sockets and timers. That last number is
+the practical measure of "event loop lag" - the worst case for how delayed
+any I/O or timer can get.
+
+## Tasks
+
+* [x] New `EventLoopMetrics` records, per completed pass: `iterations`,
+      accumulated `busySeconds` (dispatching callbacks), accumulated
+      `idleSeconds` (waiting in `select()`), and `maxLagSeconds` (the
+      longest single busy stretch - the furthest the loop has fallen behind)
+* [x] `SelectLoop::tick()` times its `stream_select()` wait (idle) and its
+      callback dispatch (busy) with `hrtime()` and records both; the
+      empty-listener path records idle time too
+* [x] `EventLoop` gains a `metrics()` accessor so every loop (including the
+      Phase 36 EpollLoop) exposes the same observability
+* [x] `INFO` reports `eventloop_iterations`, `eventloop_busy_sec`,
+      `eventloop_idle_sec` and `eventloop_max_lag_sec`
+
+## Definition of Done
+
+A slow command handler shows up as a spike in `eventloop_max_lag_sec` and
+`eventloop_busy_sec` - the loop's responsiveness to other clients and its
+own timers is directly visible in INFO.
+
+## Tests
+
+* `SelectLoopTest::testMetricsCountIterations` - each tick is counted
+* `SelectLoopTest::testMetricsRecordBusyTimeAndLagFromCallbackDispatch` -
+  a deliberately slow writable callback is reflected in `busySeconds` and
+  `maxLagSeconds`
+* `InfoCommandTest::testReportsConnectionAndCommandCounts` now also asserts
+  the four `eventloop_*` fields
+
+---
+
 # Final Principle
 
 Do not optimize for:

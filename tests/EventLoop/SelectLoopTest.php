@@ -74,6 +74,35 @@ final class SelectLoopTest extends TestCase
         self::assertSame(0, $loop->tick(0.05));
     }
 
+    public function testMetricsCountIterations(): void
+    {
+        $loop = new SelectLoop();
+
+        $loop->tick(0.01);
+        $loop->tick(0.01);
+        $loop->tick(0.01);
+
+        self::assertSame(3, $loop->metrics()->iterations());
+    }
+
+    public function testMetricsRecordBusyTimeAndLagFromCallbackDispatch(): void
+    {
+        [$a, $b] = $this->pairOfSockets();
+        $loop = new SelectLoop();
+
+        $loop->onWritable($a, function (): void {
+            // A deliberately slow callback: the loop is held away from
+            // select() for this long, which is exactly the "lag" the metric
+            // is meant to surface.
+            usleep(50_000);
+        });
+
+        self::assertSame(1, $loop->tick(1));
+        self::assertGreaterThanOrEqual(0.05, $loop->metrics()->maxLagSeconds());
+        self::assertGreaterThanOrEqual(0.05, $loop->metrics()->busySeconds());
+        self::assertSame(1, $loop->metrics()->iterations());
+    }
+
     public function testStopEndsRun(): void
     {
         [$a, $b] = $this->pairOfSockets();
