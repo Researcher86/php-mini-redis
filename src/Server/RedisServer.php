@@ -25,6 +25,8 @@ use App\Protocol\RespValue;
 use App\PubSub\ChannelRegistry;
 use App\Storage\InMemoryStore;
 use App\Storage\Store;
+use App\Support\Clock;
+use App\Support\SystemClock;
 use App\Transaction\TransactionManager;
 
 /**
@@ -51,6 +53,7 @@ final class RedisServer
     private ChannelRegistry $channels;
     private TransactionManager $transactions;
     private ?SnapshotStore $snapshots;
+    private bool $shuttingDown = false;
 
     public function __construct(
         ServerConfig $config,
@@ -61,6 +64,8 @@ final class RedisServer
         ?float $idleTimeoutSeconds = null,
         ?string $snapshotPath = null,
         ?float $snapshotIntervalSeconds = null,
+        private readonly Clock $clock = new SystemClock(),
+        private readonly float $shutdownGraceSeconds = 5.0,
     ) {
         $this->socket = new ServerSocket($config);
         $this->connections = new ConnectionManager();
@@ -175,6 +180,8 @@ final class RedisServer
      */
     public function run(?callable $onConnect = null): void
     {
+        $this->installSignalHandlers();
+
         $this->eventLoop->onReadable($this->socket->resource(), function () use ($onConnect): void {
             $connection = $this->acceptClient(0);
 
@@ -191,6 +198,54 @@ final class RedisServer
         $this->eventLoop->stop();
         $this->connections->closeAll();
         $this->socket->close();
+    }
+
+    /**
+     * Starts a graceful shutdown: stop accepting new connections, but leave
+     * existing ones running - so whatever they are mid-write can still be
+     * flushed - until either every connection is gone or
+     * $this->shutdownGraceSeconds has passed, whichever comes first.
+     * Idempotent: a second call while one is already in progress is a
+     * no-op.
+     */
+    public function requestShutdown(): void
+    {
+        if ($this->shuttingDown) {
+            return;
+        }
+
+        $this->shuttingDown = true;
+        $this->eventLoop->removeReadable($this->socket->resource());
+
+        $deadline = $this->clock->now() + $this->shutdownGraceSeconds;
+        $checker = $this->eventLoop->every(0.02, function () use (&$checker, $deadline): void {
+            if ($this->connections->count() > 0 && $this->clock->now() < $deadline) {
+                return;
+            }
+
+            $checker->cancel();
+            $this->stop();
+        });
+    }
+
+    /**
+     * Reacts to SIGTERM/SIGINT with requestShutdown() instead of the
+     * default "terminate immediately". A no-op where ext-pcntl isn't
+     * available.
+     */
+    private function installSignalHandlers(): void
+    {
+        if (!function_exists('pcntl_signal')) {
+            return;
+        }
+
+        pcntl_async_signals(true);
+        pcntl_signal(SIGTERM, function (): void {
+            $this->requestShutdown();
+        });
+        pcntl_signal(SIGINT, function (): void {
+            $this->requestShutdown();
+        });
     }
 
     /**
@@ -306,7 +361,7 @@ final class RedisServer
      */
     private function closeIdleConnections(): void
     {
-        $now = microtime(true);
+        $now = $this->clock->now();
 
         foreach ($this->connections->all() as $connection) {
             if ($now - $connection->lastActivityAt() >= $this->idleTimeoutSeconds) {

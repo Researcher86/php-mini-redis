@@ -64,10 +64,11 @@ reply printed to stdout. It exists to make this demo runnable without
 | **Pub/Sub** | `SUBSCRIBE` / `PUBLISH`, delivered to every subscriber of a channel |
 | **Transactions** | `MULTI` / `EXEC` / `DISCARD`, queued per connection |
 | **Persistence** | optional snapshot to disk, reloaded on startup - in-memory-only unless configured |
+| **Graceful shutdown** | `SIGTERM`/`SIGINT` stop new connections and drain existing ones before exiting |
 
-Still ahead: graceful shutdown, explicit resource limits, backpressure,
-metrics - see [docs/PHASES.md](docs/PHASES.md) for what each one means and
-where it stands.
+Still ahead: explicit resource limits, backpressure, metrics - see
+[docs/PHASES.md](docs/PHASES.md) for what each one means and where it
+stands.
 
 ---
 

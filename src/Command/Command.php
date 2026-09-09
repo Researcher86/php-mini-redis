@@ -14,9 +14,9 @@ use App\Protocol\RespValue;
  */
 final readonly class Command
 {
-    /** @param list<string> $arguments */
     private function __construct(
         public string $name,
+        /** @var list<string> */
         public array $arguments,
     ) {
     }

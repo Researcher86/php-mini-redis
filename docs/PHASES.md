@@ -93,7 +93,7 @@ one test answers for one line of the plan. The whole suite runs with
 - [x] Phase 20 — Pub/Sub
 - [x] Phase 21 — Transactions
 - [x] Phase 22 — Persistence
-- [ ] Phase 23 — Graceful Shutdown
+- [x] Phase 23 — Graceful Shutdown
 - [ ] Phase 24 — Error Handling
 - [ ] Phase 25 — Limits
 - [ ] Phase 26 — Backpressure
@@ -774,10 +774,33 @@ stop accepting, finish in-flight responses, then exit.
 
 ## Tasks
 
-* [ ] Handle `SIGTERM`
-* [ ] Stop accepting new connections
-* [ ] Let existing connections finish their pending responses
-* [ ] Exit once drained (or after a safety timeout)
+* [x] `RedisServer::requestShutdown()`: idempotent, removes the listening
+      socket's readable registration (no new connections accepted through
+      the event loop) but leaves existing connections' read/write
+      listeners untouched
+* [x] A repeating checker (self-cancelling once done) calls `stop()` once
+      either every connection is gone or `shutdownGraceSeconds` has
+      elapsed, whichever comes first
+* [x] `SIGTERM`/`SIGINT` wired to `requestShutdown()` via
+      `pcntl_async_signals()`, installed when `run()` starts; a no-op
+      where ext-pcntl isn't loaded
+
+## Definition of Done
+
+A real `SIGTERM` to the running process closes it cleanly (no orphaned
+process, no hung shutdown), and a connection already accepted when
+shutdown begins is not simply cut off - only new ones are refused.
+
+## Tests
+
+- [tests/Server/RedisServerTest.php](../tests/Server/RedisServerTest.php) -
+  `testRequestShutdownStopsAcceptingNewConnectionsButDrainsExistingOnes`
+  (a second client, connected before shutdown was requested, is never
+  accepted through the loop afterward), `testRequestShutdownIsIdempotent`,
+  and `testSigtermTriggersAGracefulShutdown` - a real `SIGTERM` delivered
+  to the test process itself via `posix_kill()` from a timer callback,
+  proving the signal wiring (not just `requestShutdown()` called
+  directly) actually works.
 
 ---
 

@@ -15,11 +15,10 @@ final class ClientConnection
     private WriteBuffer $writeBuffer;
     private float $lastActivityAt;
 
-    /**
-     * @param resource $socket
-     */
-    public function __construct(private readonly mixed $socket)
-    {
+    public function __construct(
+        /** @var resource */
+        private readonly mixed $socket,
+    ) {
         $this->state = ConnectionState::New;
         $this->readBuffer = new ReadBuffer();
         $this->writeBuffer = new WriteBuffer();

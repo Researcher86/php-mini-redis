@@ -14,8 +14,9 @@ use App\Storage\InMemoryStore;
  */
 final readonly class SnapshotStore
 {
-    public function __construct(private string $path)
-    {
+    public function __construct(
+        private string $path,
+    ) {
     }
 
     /**

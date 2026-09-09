@@ -15,12 +15,12 @@ final readonly class ConsoleLogger implements Logger
     /** @var resource */
     private mixed $stderr;
 
-    /**
-     * @param resource|null $stdout
-     * @param resource|null $stderr
-     */
-    public function __construct(mixed $stdout = null, mixed $stderr = null)
-    {
+    public function __construct(
+        /** @var resource|null */
+        mixed $stdout = null,
+        /** @var resource|null */
+        mixed $stderr = null,
+    ) {
         $this->stdout = $stdout ?? STDOUT;
         $this->stderr = $stderr ?? STDERR;
     }

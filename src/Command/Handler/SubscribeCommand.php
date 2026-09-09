@@ -13,8 +13,9 @@ use App\Storage\Store;
 
 final readonly class SubscribeCommand implements CommandHandler
 {
-    public function __construct(private ChannelRegistry $channels)
-    {
+    public function __construct(
+        private ChannelRegistry $channels,
+    ) {
     }
 
     public function handle(Command $command, Store $store, ClientConnection $connection): RespValue

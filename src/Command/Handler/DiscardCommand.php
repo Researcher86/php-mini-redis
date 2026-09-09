@@ -13,8 +13,9 @@ use App\Transaction\TransactionManager;
 
 final readonly class DiscardCommand implements CommandHandler
 {
-    public function __construct(private TransactionManager $transactions)
-    {
+    public function __construct(
+        private TransactionManager $transactions,
+    ) {
     }
 
     public function handle(Command $command, Store $store, ClientConnection $connection): RespValue

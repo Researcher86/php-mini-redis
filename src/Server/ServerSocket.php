@@ -14,8 +14,9 @@ final readonly class ServerSocket
     /** @var resource */
     private mixed $socket;
 
-    public function __construct(ServerConfig $config)
-    {
+    public function __construct(
+        ServerConfig $config,
+    ) {
         $context = stream_context_create([
             'socket' => ['backlog' => $config->backlog],
         ]);

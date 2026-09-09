@@ -608,4 +608,83 @@ final class RedisServerTest extends TestCase
             @unlink($path . '.tmp');
         }
     }
+
+    public function testRequestShutdownStopsAcceptingNewConnectionsButDrainsExistingOnes(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(
+            new ServerConfig(host: '127.0.0.1', port: 0),
+            $loop,
+            shutdownGraceSeconds: 0.1,
+        );
+
+        // Both connect before run() starts: an already-established TCP
+        // connection sits in the OS backlog either way, whether or not our
+        // application ever calls accept() on it.
+        $clientA = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+        self::assertIsResource($clientA, $errstr);
+        $clientB = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+        self::assertIsResource($clientB, $errstr);
+
+        $accepted = 0;
+        $server->run(function () use ($server, &$accepted): void {
+            $accepted++;
+            // Shuts down after the very first accept - clientB must never
+            // be accepted through the loop from this point on.
+            $server->requestShutdown();
+        });
+
+        self::assertSame(1, $accepted);
+        self::assertSame(0, $server->connectedClientCount());
+
+        fclose($clientA);
+        fclose($clientB);
+    }
+
+    public function testRequestShutdownIsIdempotent(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(
+            new ServerConfig(host: '127.0.0.1', port: 0),
+            $loop,
+            shutdownGraceSeconds: 0.05,
+        );
+
+        $server->requestShutdown();
+        $server->requestShutdown(); // must not register a second checker timer
+
+        $loop->tick(0.2);
+
+        self::assertSame(0, $server->connectedClientCount());
+    }
+
+    public function testSigtermTriggersAGracefulShutdown(): void
+    {
+        if (!function_exists('pcntl_signal') || !function_exists('posix_kill')) {
+            self::markTestSkipped('ext-pcntl / ext-posix not available.');
+        }
+
+        $loop = new SelectLoop();
+        $server = new RedisServer(
+            new ServerConfig(host: '127.0.0.1', port: 0),
+            $loop,
+            shutdownGraceSeconds: 0.1,
+        );
+
+        // Fires from within the same process's own event loop: kill()-ing
+        // yourself still queues a real signal for pcntl_async_signals to
+        // deliver at the next safe point, without needing a second process.
+        $loop->after(0.02, static function (): void {
+            posix_kill(posix_getpid(), SIGTERM);
+        });
+
+        $start = microtime(true);
+        $server->run();
+        $elapsed = microtime(true) - $start;
+
+        // run() actually returned - proof the signal reached
+        // requestShutdown() rather than the process just being killed.
+        self::assertLessThan(2.0, $elapsed);
+        self::assertSame(0, $server->connectedClientCount());
+    }
 }

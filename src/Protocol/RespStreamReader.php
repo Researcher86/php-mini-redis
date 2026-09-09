@@ -13,8 +13,9 @@ namespace App\Protocol;
  */
 final readonly class RespStreamReader
 {
-    public function __construct(private RespParser $parser = new RespParser())
-    {
+    public function __construct(
+        private RespParser $parser = new RespParser(),
+    ) {
     }
 
     /**
