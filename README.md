@@ -756,7 +756,9 @@ INCR key
 ```
 
 Increments the integer stored at `key` by one, treating a missing key as
-`0`. Errors if the existing value is not an integer.
+`0`. Errors if the existing value is not an integer. A key that was set
+with a TTL keeps it - counting a hit does not turn a rate-limit key into
+a permanent one.
 
 ---
 

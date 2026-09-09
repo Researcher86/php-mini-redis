@@ -10,6 +10,7 @@ use App\Protocol\RespType;
 use App\Protocol\RespValue;
 use App\Storage\InMemoryStore;
 use App\Tests\Support\CreatesTestConnections;
+use App\Tests\Support\FakeClock;
 use PHPUnit\Framework\TestCase;
 
 final class IncrCommandTest extends TestCase
@@ -43,6 +44,27 @@ final class IncrCommandTest extends TestCase
 
         self::assertSame(42, $result->value);
         self::assertSame('42', $store->get('counter'));
+    }
+
+    public function testIncrementingAnExpiringCounterLeavesItsTtlAlone(): void
+    {
+        $clock = new FakeClock(1000.0);
+        $store = new InMemoryStore($clock);
+        $store->set('hits', '1', ttlSeconds: 60);
+
+        $command = Command::fromRespValue(RespValue::array([
+            RespValue::bulkString('INCR'),
+            RespValue::bulkString('hits'),
+        ]));
+
+        (new IncrCommand())->handle($command, $store, $this->createConnection());
+
+        $clock->advance(59);
+        self::assertSame('2', $store->get('hits'));
+
+        // Counting a hit must not make a rate-limit key permanent.
+        $clock->advance(1);
+        self::assertNull($store->get('hits'));
     }
 
     public function testRejectsANonIntegerValue(): void

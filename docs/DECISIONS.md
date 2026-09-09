@@ -185,6 +185,27 @@ reused - the next connection to land on that id looks paused, so
 backpressure silently stops applying to it. Pinned by
 `RedisServerTest::testAClientThatVanishesMidPipelineDoesNotTakeTheServerDown`.
 
+## `Store` grew `setKeepingTtl()` rather than letting INCR reset a TTL
+
+`Store::set()` is the only way to write a value, and it takes the TTL as
+an argument - so a command that rewrites a value without being asked
+anything about expiration had no way to leave one alone. `INCR` therefore
+wrote through `set()` with no TTL and quietly made an expiring key
+permanent: `SET hits 1 EX 60` followed by one `INCR` produced a counter
+that outlives the window it was counting.
+
+The alternative was a read-side accessor (`expiresAt()`) and having
+`IncrCommand` compute the remaining seconds and pass them back into
+`set()`. Rejected: it converts an absolute expiry into whole seconds and
+back on every increment, so a TTL drifts a little each time - and it puts
+the invariant in the caller, where the next command that rewrites a value
+would have to remember it too. `setKeepingTtl()` states it once, in the
+Store: the value changes, the expiration does not.
+
+It returns `false` for a key that is absent (or already expired) instead
+of creating one, so `INCR` still writes a missing counter as a new,
+permanent key - which is what real Redis does with both cases.
+
 ## One number bounds both the read buffer and the largest value
 
 Phase 25 capped a connection's read buffer at 512 KiB; Phase 31 gave the

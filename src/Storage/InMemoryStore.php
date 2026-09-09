@@ -61,6 +61,22 @@ final class InMemoryStore implements Store
         }
     }
 
+    public function setKeepingTtl(string $key, mixed $value): bool
+    {
+        $entry = $this->entryOrNull($key);
+
+        if ($entry === null) {
+            return false;
+        }
+
+        // The version and the heap entry both stay as they are: they are
+        // keyed on the expiration, and that is precisely what does not
+        // change here.
+        $this->data[$key] = new StoredValue($value, $entry->expiresAt);
+
+        return true;
+    }
+
     public function get(string $key): mixed
     {
         $entry = $this->entryOrNull($key);

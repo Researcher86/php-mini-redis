@@ -228,6 +228,35 @@ final class InMemoryStoreTest extends TestCase
         self::assertSame('second', $store->get('session'));
     }
 
+    public function testSetKeepingTtlRewritesTheValueOnTheSameExpiration(): void
+    {
+        $clock = new FakeClock(1000.0);
+        $store = new InMemoryStore($clock);
+        $store->set('session', 'first', ttlSeconds: 10);
+
+        self::assertTrue($store->setKeepingTtl('session', 'second'));
+
+        $clock->advance(9);
+        self::assertSame('second', $store->get('session'));
+
+        $clock->advance(1);
+        self::assertNull($store->get('session'));
+        self::assertSame(0, $store->sweepExpired()); // already gone lazily
+    }
+
+    public function testSetKeepingTtlReportsAKeyThatIsNotThereAndWritesNothing(): void
+    {
+        $clock = new FakeClock(1000.0);
+        $store = new InMemoryStore($clock);
+        $store->set('gone', 'value', ttlSeconds: 10);
+        $clock->advance(10);
+
+        self::assertFalse($store->setKeepingTtl('gone', 'value'));
+        self::assertFalse($store->setKeepingTtl('never-existed', 'value'));
+        self::assertFalse($store->has('gone'));
+        self::assertFalse($store->has('never-existed'));
+    }
+
     public function testRestoreDropsEntriesAlreadyExpiredAtRestoreTime(): void
     {
         $clock = new FakeClock(1000.0);

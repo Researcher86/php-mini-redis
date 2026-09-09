@@ -40,7 +40,14 @@ final readonly class IncrCommand implements CommandHandler
         }
 
         $number++;
-        $store->set($command->arguments[0], (string) $number);
+
+        // Rewriting the value must not extend the key's life: a counter set
+        // with a TTL stays on that TTL as it is incremented, as it does in
+        // real Redis. A key that is not there yet is written as a new one,
+        // with no expiration.
+        if (!$store->setKeepingTtl($command->arguments[0], (string) $number)) {
+            $store->set($command->arguments[0], (string) $number);
+        }
 
         return RespValue::integer($number);
     }

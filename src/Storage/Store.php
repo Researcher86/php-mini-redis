@@ -13,6 +13,16 @@ interface Store
 {
     public function set(string $key, mixed $value, ?int $ttlSeconds = null): void;
 
+    /**
+     * Replaces an existing key's value while leaving its expiration exactly
+     * where it was. A command that only rewrites a value - INCR - must not
+     * turn an expiring key into a permanent one as a side effect.
+     *
+     * @return bool True if the key was there to be rewritten; false leaves
+     *     the store untouched, so the caller can write it as a new key.
+     */
+    public function setKeepingTtl(string $key, mixed $value): bool;
+
     public function get(string $key): mixed;
 
     public function has(string $key): bool;
