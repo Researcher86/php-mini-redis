@@ -77,7 +77,7 @@ make example NAME=slow-client            # a paused slow reader vs. an unaffecte
 | **Persistence** | optional snapshot to disk, reloaded on startup, written once more on the way out - in-memory-only unless configured |
 | **Graceful shutdown** | `SIGTERM`/`SIGINT` stop new connections and drain existing ones before exiting |
 | **Limits** | capped read buffer size, arguments per command, and connection count - each replies with a RESP error instead of growing unbounded |
-| **Backpressure** | a slow reader's write buffer is capped - reading from it pauses until it drains, instead of growing unbounded |
+| **Backpressure** | a slow reader's write buffer is capped - reading from it pauses until it drains, instead of growing unbounded; a subscriber that never reads is dropped, since pausing its reads cannot slow a publisher down |
 | **Metrics** | `INFO` reports connections, commands (overall, per name, and unknown), bytes in/out, errors, expired keys |
 
 Every phase in [docs/PHASES.md](docs/PHASES.md) is done - the tests, the

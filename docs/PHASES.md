@@ -1174,6 +1174,11 @@ has caught up enough is let back in without waiting for a complete drain.
       buffer fully empties - the tail of the backlog still flushes, and
       a fresh burst of responses can re-pause it by crossing the high
       watermark again
+* [x] `hardSubscriberWriteBufferBytes` (four times the pause level by
+      default) - a watermark neither of the two above can serve: Pub/Sub
+      bytes come from the publisher, so pausing a subscriber's own reads
+      throttles nothing, and past this line the subscriber is dropped
+      rather than queued for
 
 ## Definition of Done
 
@@ -1193,6 +1198,11 @@ being processed while response bytes are still queued.
 * `RedisServerTest::testASlowReaderIsPausedThenResumedOnceItsWriteBufferDrains`
   (Phase 26) still passes unchanged - an empty-buffer resume remains a
   special case of the low-watermark rule
+* `RedisServerTest::testASubscriberThatNeverReadsIsDroppedInsteadOfQueuedForever` -
+  a subscriber that reads nothing while a publisher keeps publishing is
+  disconnected and unsubscribed once its backlog passes the hard limit,
+  rather than being paused (which would throttle nothing) and queued for
+  until the server runs out of memory
 
 ---
 

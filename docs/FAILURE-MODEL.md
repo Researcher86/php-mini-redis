@@ -91,6 +91,14 @@ socket stays open indefinitely; nothing currently times out a connection
 stuck in the paused state specifically (Phase 19's idle timeout is based
 on last activity, and a socket mid-flush still counts as active).
 
+Pausing reads bounds what a connection asks for, and only that. Pub/Sub
+delivery is produced by whoever publishes, so a subscriber that never
+reads is not slowed down by having its own reads paused - it is dropped
+once its backlog passes `hardSubscriberWriteBufferBytes` (four times the
+pause level by default), messages and all. Ordinary clients have no such
+hard limit, the same split real Redis makes with
+`client-output-buffer-limit`.
+
 ## Resource limits are capped, but coarse
 
 `RedisServer` caps read buffer size, arguments per command, and total

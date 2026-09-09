@@ -491,6 +491,91 @@ final class RedisServerTest extends TestCase
         }
     }
 
+    public function testASubscriberThatNeverReadsIsDroppedInsteadOfQueuedForever(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(
+            new ServerConfig(host: '127.0.0.1', port: 0),
+            $loop,
+            // Room for a multi-megabyte PUBLISH to arrive in one piece,
+            // and a subscriber backlog measured in kilobytes: what a slow
+            // subscriber looks like, in miniature.
+            maxReadBufferBytes: 8 * 1024 * 1024,
+            maxWriteBufferBytes: 16 * 1024,
+            hardSubscriberWriteBufferBytes: 64 * 1024,
+        );
+
+        try {
+            $subscriberClient = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($subscriberClient, $errstr);
+            $subscriber = $server->acceptClient(5);
+            self::assertInstanceOf(ClientConnection::class, $subscriber);
+
+            fwrite($subscriberClient, "*2\r\n\$9\r\nSUBSCRIBE\r\n\$4\r\nnews\r\n");
+            $loop->tick(1);
+
+            $publisherClient = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($publisherClient, $errstr);
+            $server->acceptClient(5);
+            self::assertSame(2, $server->connectedClientCount());
+
+            // Publishes far larger than the subscriber's socket can take
+            // while it is not reading. Pausing its reads does nothing here:
+            // the bytes come from the publisher, not from anything the
+            // subscriber asked for. Enough of them to fill the kernel's
+            // own buffers first, since only what does not fit there is
+            // what the server has to hold.
+            $message = str_repeat('m', 1024 * 1024);
+            $publish = sprintf(
+                "*3\r\n\$7\r\nPUBLISH\r\n\$4\r\nnews\r\n\$%d\r\n%s\r\n",
+                strlen($message),
+                $message,
+            );
+
+            // One publish at a time, so nothing is left queued for the
+            // server to chew through after the subscriber goes.
+            stream_set_blocking($publisherClient, false);
+            $pending = $publish;
+
+            for ($i = 0; $i < 2000 && $server->connectedClientCount() > 1; $i++) {
+                if ($pending === '') {
+                    $pending = $publish;
+                }
+
+                $written = @fwrite($publisherClient, $pending);
+
+                if ($written !== false) {
+                    $pending = substr($pending, $written);
+                }
+
+                $loop->tick(0.01);
+                @fread($publisherClient, 1 << 20);
+            }
+
+            self::assertSame(1, $server->connectedClientCount());
+            self::assertSame(ConnectionState::Closed, $subscriber->state());
+
+            // Dropped, and gone from the channel with it: the next publish
+            // reaches nobody rather than queueing for a socket nothing is
+            // on the other end of.
+            fwrite($publisherClient, "*3\r\n\$7\r\nPUBLISH\r\n\$4\r\nnews\r\n\$2\r\nhi\r\n");
+
+            $replies = '';
+
+            for ($i = 0; $i < 500 && !str_ends_with($replies, ":0\r\n"); $i++) {
+                $loop->tick(0.01);
+                $replies .= (string) @fread($publisherClient, 1 << 20);
+            }
+
+            self::assertStringEndsWith(":0\r\n", $replies);
+
+            fclose($subscriberClient);
+            fclose($publisherClient);
+        } finally {
+            $server->stop();
+        }
+    }
+
     public function testMultiQueuesCommandsAndExecRunsThemInOrder(): void
     {
         $loop = new SelectLoop();

@@ -67,6 +67,7 @@ final class RedisServer
     private ?ForkingSnapshotWorker $snapshotWorker;
     private ServerMetrics $metrics;
     private int $lowWriteBufferBytes;
+    private int $hardSubscriberWriteBufferBytes;
     private bool $shuttingDown = false;
 
     /** @var array<int, true> Connection ids currently paused for reading. */
@@ -107,8 +108,15 @@ final class RedisServer
         // be paused and resumed on every tick. Defaults to a quarter of
         // $maxWriteBufferBytes (e.g. pause at 16 MB, resume at 4 MB).
         ?int $lowWriteBufferBytes = null,
+        // The point where a subscriber is given up on rather than waited
+        // for. Pausing reads throttles what a connection asks for itself,
+        // but nothing it did not ask for - a PUBLISH fan-out is produced
+        // by other connections entirely and keeps queueing regardless.
+        // Defaults to four times the pause level.
+        ?int $hardSubscriberWriteBufferBytes = null,
     ) {
         $this->lowWriteBufferBytes = $lowWriteBufferBytes ?? max(1, intdiv($this->maxWriteBufferBytes, 4));
+        $this->hardSubscriberWriteBufferBytes = $hardSubscriberWriteBufferBytes ?? $this->maxWriteBufferBytes * 4;
         $this->socket = new ServerSocket($config);
         $this->connections = new ConnectionManager();
         $this->eventLoop = $eventLoop ?? new SelectLoop();
@@ -142,7 +150,7 @@ final class RedisServer
         $this->dispatcher->register('PUBLISH', new PublishCommand(
             $this->channels,
             function (ClientConnection $subscriber, string $payload): void {
-                $this->queueForWrite($subscriber, $payload);
+                $this->deliverToSubscriber($subscriber, $payload);
             },
         ));
 
@@ -548,6 +556,34 @@ final class RedisServer
 
         $this->pausedConnections[$connection->id()] = true;
         $this->eventLoop->removeReadable($connection->socket());
+    }
+
+    /**
+     * Pub/Sub delivery is not like answering a command: the bytes are
+     * produced by whoever publishes, not by the connection receiving them,
+     * so pausing that connection's reads throttles nothing at all. A
+     * subscriber that never reads would queue messages until the server
+     * ran out of memory - with backpressure "working" the whole time,
+     * since its own reads have been paused since the first megabyte.
+     *
+     * Past the hard limit it is dropped instead. Real Redis draws the line
+     * in the same place and for the same reason (its
+     * `client-output-buffer-limit pubsub`), while leaving ordinary clients
+     * unlimited: what those queue is bounded by what they asked for.
+     */
+    private function deliverToSubscriber(ClientConnection $subscriber, string $payload): void
+    {
+        $this->queueForWrite($subscriber, $payload);
+
+        if (
+            $subscriber->state() === ConnectionState::Closed
+            || $subscriber->writeBuffer()->length() <= $this->hardSubscriberWriteBufferBytes
+        ) {
+            return;
+        }
+
+        $this->metrics->recordError();
+        $this->disconnectClient($subscriber);
     }
 
     private function resumeReadingIfPaused(ClientConnection $connection): void

@@ -207,6 +207,28 @@ It returns `false` for a key that is absent (or already expired) instead
 of creating one, so `INCR` still writes a missing counter as a new,
 permanent key - which is what real Redis does with both cases.
 
+## Backpressure cannot throttle a publisher, so subscribers get a hard limit
+
+Phase 26's backpressure answers one question - "this connection asks for
+responses faster than it reads them" - by pausing its reads. That works
+because the only thing producing bytes for a connection is the connection
+itself.
+
+Pub/Sub breaks the assumption: the bytes are produced by whoever
+publishes. A subscriber that never reads is paused after its first
+megabyte and then keeps being written to anyway, one message per publish,
+with no limit anywhere - measured at 21 MB queued against a 64 KB pause
+level, still climbing, still connected, with backpressure reporting
+itself as working the whole time.
+
+So delivery has a second line: past `hardSubscriberWriteBufferBytes` the
+subscriber is disconnected rather than queued for. Ordinary clients keep
+no such limit - what they queue is bounded by what they asked for - which
+is the same split real Redis draws between the `normal` and `pubsub`
+classes of `client-output-buffer-limit`. Dropping is the only option
+available: there is no way to tell a publisher to slow down that does not
+punish every other subscriber on the channel.
+
 ## One number bounds both the read buffer and the largest value
 
 Phase 25 capped a connection's read buffer at 512 KiB; Phase 31 gave the
