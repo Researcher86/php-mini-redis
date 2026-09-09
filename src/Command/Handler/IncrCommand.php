@@ -24,8 +24,19 @@ final readonly class IncrCommand implements CommandHandler
             $number = 0;
         } elseif (is_string($current) && preg_match('/^-?\d+$/', $current) === 1) {
             $number = (int) $current;
+
+            // (int) silently clamps out-of-range digits to PHP_INT_MAX /
+            // PHP_INT_MIN, so compare back: a value that does not survive
+            // the round-trip is out of range, same rule as real Redis.
+            if ((string) $number !== $current) {
+                return RespValue::error('ERR value is not an integer or out of range');
+            }
         } else {
             return RespValue::error('ERR value is not an integer or out of range');
+        }
+
+        if ($number === PHP_INT_MAX) {
+            return RespValue::error('ERR increment or decrement would overflow');
         }
 
         $number++;

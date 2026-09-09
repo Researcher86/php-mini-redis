@@ -58,4 +58,35 @@ final class IncrCommandTest extends TestCase
 
         self::assertSame(RespType::Error, $result->type);
     }
+
+    public function testRejectsAValueWhoseDigitsExceedThePlatformIntegerRange(): void
+    {
+        $store = new InMemoryStore();
+        $store->set('counter', (string) PHP_INT_MAX . '9');
+        $command = Command::fromRespValue(RespValue::array([
+            RespValue::bulkString('INCR'),
+            RespValue::bulkString('counter'),
+        ]));
+
+        $result = (new IncrCommand())->handle($command, $store, $this->createConnection());
+
+        self::assertSame(RespType::Error, $result->type);
+        self::assertSame('ERR value is not an integer or out of range', $result->value);
+    }
+
+    public function testRejectsAnIncrementThatWouldOverflow(): void
+    {
+        $store = new InMemoryStore();
+        $store->set('counter', (string) PHP_INT_MAX);
+        $command = Command::fromRespValue(RespValue::array([
+            RespValue::bulkString('INCR'),
+            RespValue::bulkString('counter'),
+        ]));
+
+        $result = (new IncrCommand())->handle($command, $store, $this->createConnection());
+
+        self::assertSame(RespType::Error, $result->type);
+        self::assertSame('ERR increment or decrement would overflow', $result->value);
+        self::assertSame((string) PHP_INT_MAX, $store->get('counter'), 'A rejected INCR must not mutate the stored value.');
+    }
 }
