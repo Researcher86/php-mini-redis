@@ -1,433 +1,62 @@
-# PHP Job Queue
+# PHP Mini Redis — Implementation Plan
 
-> Educational implementation of a reliable asynchronous job processing system in PHP.
+> A step-by-step plan for building an educational event-driven in-memory database server in PHP.
 
-This project answers one question by building the answer:
+The goal of this project is not to recreate Redis.
 
-> **How does a reliable job queue actually work inside?**
+The goal is to understand how an event-driven network server works by implementing a small Redis-like server from scratch.
 
-The goal is **not** to build a production replacement for RabbitMQ, Redis, Kafka, Laravel Queue, Sidekiq, or Beanstalkd.
+The project should remain:
 
-The goal is to build a small, understandable system that can be:
-
-* read as an executable cheat sheet;
-* launched locally;
-* modified safely;
-* broken intentionally;
-* debugged;
-* used to study queue semantics.
-
-The system should demonstrate how asynchronous work moves through:
-
-```text
-Producer
-    ↓
-Job Queue
-    ↓
-Scheduler / Dispatcher
-    ↓
-Worker Pool
-    ↓
-Job Execution
-    ↓
-ACK / NACK
-    ↓
-Completed / Retry / Dead Letter Queue
-```
+* small enough to understand;
+* easy to run locally;
+* easy to modify;
+* easy to debug;
+* realistic enough to demonstrate real systems programming concepts.
 
 ---
 
-# Table of Contents
-
-1. [Project Goals](#1-project-goals)
-2. [Core Concepts](#2-core-concepts)
-3. [Final Architecture](#3-final-architecture)
-4. [Job Lifecycle](#4-job-lifecycle)
-5. [Project Structure](#5-project-structure)
-6. [Phase 0 — Project Setup](#phase-0--project-setup)
-7. [Phase 1 — Basic Job Model](#phase-1--basic-job-model)
-8. [Phase 2 — In-Memory Queue](#phase-2--in-memory-queue)
-9. [Phase 3 — Producer API](#phase-3--producer-api)
-10. [Phase 4 — Worker Pool](#phase-4--worker-pool)
-11. [Phase 5 — Job Dispatching](#phase-5--job-dispatching)
-12. [Phase 6 — ACK / NACK](#phase-6--ack--nack)
-13. [Phase 7 — Retry System](#phase-7--retry-system)
-14. [Phase 8 — Delayed Jobs](#phase-8--delayed-jobs)
-15. [Phase 9 — Visibility Timeout](#phase-9--visibility-timeout)
-16. [Phase 10 — Dead Letter Queue](#phase-10--dead-letter-queue)
-17. [Phase 11 — Worker Failure Recovery](#phase-11--worker-failure-recovery)
-18. [Phase 12 — Persistence](#phase-12--persistence)
-19. [Phase 13 — Priority Queues](#phase-13--priority-queues)
-20. [Phase 14 — Metrics](#phase-14--metrics)
-21. [Phase 15 — Graceful Shutdown](#phase-15--graceful-shutdown)
-22. [Phase 16 — Stress and Chaos Testing](#phase-16--stress-and-chaos-testing)
-23. [Important Engineering Questions](#important-engineering-questions)
-24. [Suggested Development Order](#suggested-development-order)
-
----
-
-# 1. Project Goals
-
-The project should demonstrate the fundamental concepts behind reliable asynchronous job processing.
-
-The main topics are:
+# Final Architecture
 
 ```text
-Job lifecycle
-Queueing
-Workers
-ACK / NACK
-Retries
-Delayed jobs
-Visibility timeout
-Worker crashes
-At-least-once delivery
-Dead Letter Queue
-Persistence
-Backpressure
-Graceful shutdown
-Observability
+                         Clients
+                            │
+                            │ TCP
+                            ▼
+                    ┌───────────────┐
+                    │  TCP Server   │
+                    └───────┬───────┘
+                            │
+                            ▼
+                    ┌───────────────┐
+                    │  Event Loop   │
+                    └───────┬───────┘
+                            │
+              ┌─────────────┼─────────────┐
+              │             │             │
+              ▼             ▼             ▼
+          Read Event    Write Event     Timer
+              │             │             │
+              ▼             │             ▼
+        Read Buffer         │        Expiration
+              │             │          Cleanup
+              ▼             │
+       Protocol Parser      │
+              │             │
+              ▼             │
+        Redis Command       │
+              │             │
+              ▼             │
+       Command Dispatcher   │
+              │             │
+              ▼             │
+       Command Handler      │
+              │             │
+              ▼             │
+       In-Memory Store      │
+              │             │
+              └─────────────┘
 ```
-
-The implementation should prioritize:
-
-```text
-Clarity
-↓
-Correctness
-↓
-Observability
-↓
-Performance
-```
-
-Do not add production complexity unless it helps demonstrate an important concept.
-
----
-
-# 2. Core Concepts
-
-## Job
-
-A job represents a unit of asynchronous work.
-
-Example:
-
-```text
-SendEmail
-GenerateReport
-ResizeImage
-ProcessPayment
-```
-
-A job contains:
-
-```text
-Job ID
-Type
-Payload
-Attempts
-Max attempts
-Created time
-Available time
-```
-
-Example:
-
-```php
-Job {
-    id: "job-123",
-
-    type: "send_email",
-
-    payload: [
-        "email" => "user@example.com",
-        "subject" => "Hello"
-    ],
-
-    attempts: 0,
-
-    maxAttempts: 3,
-
-    createdAt: ...,
-
-    availableAt: ...
-}
-```
-
----
-
-## Producer
-
-A producer creates jobs.
-
-```text
-Application
-     │
-     ▼
-Producer
-     │
-     ▼
-Queue
-```
-
-Example:
-
-```php
-$queue->push(
-    new Job(
-        type: 'send_email',
-        payload: [...]
-    )
-);
-```
-
----
-
-## Worker
-
-A worker receives jobs and executes them.
-
-```text
-Queue
-   │
-   ▼
-Worker
-   │
-   ▼
-Job Handler
-```
-
----
-
-## ACK
-
-ACK means:
-
-> The job completed successfully.
-
-```text
-PROCESSING
-     │
-     ▼
-    ACK
-     │
-     ▼
-COMPLETED
-```
-
----
-
-## NACK
-
-NACK means:
-
-> The job failed.
-
-```text
-PROCESSING
-     │
-     ▼
-    NACK
-     │
-     ▼
-RETRY
-```
-
----
-
-# 3. Final Architecture
-
-The final system should approximately look like this:
-
-```text
-                         ┌──────────────┐
-                         │   Producer   │
-                         └──────┬───────┘
-                                │
-                                ▼
-                         ┌──────────────┐
-                         │     Queue    │
-                         │              │
-                         │ READY JOBS   │
-                         └──────┬───────┘
-                                │
-                                ▼
-                         ┌──────────────┐
-                         │  Dispatcher  │
-                         └──────┬───────┘
-                                │
-                    ┌───────────┼───────────┐
-                    ▼           ▼           ▼
-                 Worker      Worker      Worker
-                    │           │           │
-                    ▼           ▼           ▼
-                 Handler     Handler     Handler
-                    │
-          ┌─────────┴──────────┐
-          │                    │
-          ▼                    ▼
-         ACK                  NACK
-          │                    │
-          ▼                    ▼
-      COMPLETED              RETRY
-                               │
-                    ┌──────────┴──────────┐
-                    ▼                     ▼
-                  READY                  DLQ
-```
-
-Additional systems:
-
-```text
-Delayed Job Scheduler
-Visibility Timeout Monitor
-Worker Supervisor
-Persistence Layer
-Metrics Collector
-```
-
----
-
-# 4. Job Lifecycle
-
-The central lifecycle should be explicitly modeled.
-
-```text
-                 ┌─────────┐
-                 │ CREATED │
-                 └────┬────┘
-                      │
-                      ▼
-                 ┌─────────┐
-                 │  READY  │◄────────────────────┐
-                 └────┬────┘                     │
-                      │                          │
-                      ▼                          │
-              ┌──────────────┐                   │
-              │ PROCESSING   │                   │
-              └──────┬───────┘                   │
-                     │                           │
-          ┌──────────┴──────────┐                │
-          │                     │                │
-          ▼                     ▼                │
-     ┌──────────┐          ┌──────────┐          │
-     │COMPLETED │          │  FAILED  │          │
-     └──────────┘          └────┬─────┘          │
-                                │                │
-                                ▼                │
-                         attempts left?          │
-                          │             │        │
-                         yes            no       │
-                          │             │        │
-                          ▼             ▼        │
-                       RETRY           DLQ       │
-                          │                      │
-                          └──────────────────────┘
-```
-
-For delayed jobs:
-
-```text
-CREATED
-   ↓
-DELAYED
-   ↓
-READY
-```
-
----
-
-# 5. Project Structure
-
-Suggested final structure:
-
-```text
-php-job-queue/
-│
-├── bin/
-│   ├── producer.php
-│   ├── worker.php
-│   └── queue.php
-│
-├── config/
-│   └── queue.php
-│
-├── examples/
-│   ├── basic-job.php
-│   ├── failed-job.php
-│   ├── delayed-job.php
-│   ├── worker-crash.php
-│   └── priority-jobs.php
-│
-├── src/
-│   │
-│   ├── Job/
-│   │   ├── Job.php
-│   │   ├── JobId.php
-│   │   ├── JobState.php
-│   │   ├── JobPayload.php
-│   │   └── JobResult.php
-│   │
-│   ├── Queue/
-│   │   ├── Queue.php
-│   │   ├── InMemoryQueue.php
-│   │   ├── ReadyQueue.php
-│   │   ├── DelayedQueue.php
-│   │   └── ProcessingQueue.php
-│   │
-│   ├── Worker/
-│   │   ├── Worker.php
-│   │   ├── WorkerPool.php
-│   │   ├── WorkerState.php
-│   │   └── WorkerSupervisor.php
-│   │
-│   ├── Dispatcher/
-│   │   └── JobDispatcher.php
-│   │
-│   ├── Handler/
-│   │   ├── JobHandler.php
-│   │   └── HandlerRegistry.php
-│   │
-│   ├── Retry/
-│   │   ├── RetryPolicy.php
-│   │   ├── FixedDelayRetry.php
-│   │   └── ExponentialBackoffRetry.php
-│   │
-│   ├── Timeout/
-│   │   └── VisibilityTimeout.php
-│   │
-│   ├── Scheduler/
-│   │   └── DelayedJobScheduler.php
-│   │
-│   ├── DLQ/
-│   │   └── DeadLetterQueue.php
-│   │
-│   ├── Persistence/
-│   │   ├── JobStorage.php
-│   │   ├── InMemoryStorage.php
-│   │   └── FileStorage.php
-│   │
-│   ├── Metrics/
-│   │   ├── MetricsCollector.php
-│   │   └── QueueMetrics.php
-│   │
-│   └── Master/
-│       └── QueueRuntime.php
-│
-├── tests/
-│
-├── README.md
-├── PLAN.md
-├── composer.json
-└── Makefile
-```
-
-The structure should grow gradually.
-
-Do not create all classes immediately.
-
-Each phase should introduce only the abstractions that are necessary.
 
 ---
 
@@ -435,1512 +64,1605 @@ Each phase should introduce only the abstractions that are necessary.
 
 ## Goal
 
-Create a minimal development environment.
+Create the basic project structure and development environment.
 
-### Tasks
+## Tasks
 
-* [ ] Create repository `php-job-queue`
-* [ ] Configure Composer
-* [ ] Configure PSR-4 autoloading
-* [ ] Add PHPUnit
-* [ ] Add PHPStan
-* [ ] Add PHP CS Fixer or another formatter
-* [ ] Create `Makefile`
-* [ ] Create initial README
-* [ ] Create PLAN.md
-
-### Initial commands
-
-```bash
-make test
-make analyse
-make run
-```
-
-### Success criteria
+Create:
 
 ```text
-Tests run
-PHPStan runs
-Application starts
+php-mini-redis/
+│
+├── bin/
+├── src/
+├── tests/
+├── examples/
+├── benchmarks/
+├── docs/
+│
+├── README.md
+├── PLAN.md
+├── composer.json
+├── phpunit.xml
+└── phpstan.neon
 ```
 
----
+Configure:
 
-# Phase 1 — Basic Job Model
+* PSR-4 autoloading;
+* PHPUnit;
+* PHPStan;
+* Docker;
+* Makefile;
+* GitHub Actions.
 
-## Goal
+## Result
 
-Create the fundamental `Job` object.
-
-### Implement
+The project can:
 
 ```text
-Job
-JobId
-JobState
-```
+composer install
 
-### Job states
-
-Start simple:
-
-```text
-CREATED
-READY
-PROCESSING
-COMPLETED
-FAILED
-```
-
-### Job fields
-
-```php
-$id
-$type
-$payload
-
-$state
-
-$attempts
-$maxAttempts
-
-$createdAt
-$availableAt
-```
-
-### Important rule
-
-The Job object should represent state clearly.
-
-Avoid:
-
-```php
-if ($job->attempts > 3 && ...)
-```
-
-scattered everywhere.
-
-Prefer explicit lifecycle methods:
-
-```php
-$job->markReady();
-
-$job->markProcessing();
-
-$job->markCompleted();
-
-$job->markFailed();
-```
-
-### Tests
-
-* [ ] Job receives unique ID
-* [ ] New job starts as CREATED
-* [ ] Job can become READY
-* [ ] Job can become PROCESSING
-* [ ] Job can become COMPLETED
-* [ ] Invalid transitions are rejected
-
----
-
-# Phase 2 — In-Memory Queue
-
-## Goal
-
-Build the smallest possible queue.
-
-### Interface
-
-```php
-interface Queue
-{
-    public function push(Job $job): void;
-
-    public function pop(): ?Job;
-
-    public function size(): int;
-}
-```
-
-### Implementation
-
-```text
-InMemoryQueue
-```
-
-Use a simple FIFO structure.
-
-```text
-push(A)
-push(B)
-push(C)
-
-pop()
-
-→ A
-```
-
-### Important concept
-
-Start with:
-
-> **FIFO before reliability**
-
-Do not implement retries or persistence yet.
-
-### Tests
-
-* [ ] FIFO order
-* [ ] Empty queue returns null
-* [ ] Queue size is correct
-* [ ] Multiple jobs work correctly
-
----
-
-# Phase 3 — Producer API
-
-## Goal
-
-Create a simple way for applications to submit jobs.
-
-### API
-
-```php
-$queue->push(
-    new Job(
-        type: 'send_email',
-        payload: [...]
-    )
-);
-```
-
-Or:
-
-```php
-$producer->dispatch(
-    'send_email',
-    [
-        'email' => 'user@example.com'
-    ]
-);
-```
-
-### Implement
-
-```text
-Producer
-JobFactory
-```
-
-### Example
-
-```text
-Application
-    │
-    ▼
-Producer
-    │
-    ▼
-JobFactory
-    │
-    ▼
-Queue
-```
-
-### Tests
-
-* [ ] Producer creates job
-* [ ] Job type is preserved
-* [ ] Payload is preserved
-* [ ] Job enters READY state
-
----
-
-# Phase 4 — Worker Pool
-
-## Goal
-
-Reuse ideas from `php-worker-pool`.
-
-The system needs workers capable of processing jobs.
-
-Start simple.
-
-```text
-Queue
-  │
-  ▼
-Worker
-```
-
-Then:
-
-```text
-Queue
-  │
-  ├──── Worker 1
-  │
-  ├──── Worker 2
-  │
-  └──── Worker 3
-```
-
-### Worker states
-
-```text
-STARTING
-IDLE
-BUSY
-STOPPING
-DEAD
-```
-
-Later:
-
-```text
-DRAINING
-```
-
-### Worker responsibilities
-
-```text
-Receive job
 ↓
-Execute handler
+
+run tests
+
 ↓
-Return result
-```
 
-### Do not add yet
+run PHPStan
 
-```text
-Retries
-DLQ
-Persistence
-Autoscaling
-```
-
-### Tests
-
-* [ ] Worker processes job
-* [ ] Worker becomes BUSY
-* [ ] Worker becomes IDLE
-* [ ] Multiple workers process jobs
-
----
-
-# Phase 5 — Job Dispatching
-
-## Goal
-
-Separate queue management from worker management.
-
-Introduce:
-
-```text
-JobDispatcher
-```
-
-Architecture:
-
-```text
-Queue
-   │
-   ▼
-Dispatcher
-   │
-   ▼
-Available Worker
-```
-
-### Dispatcher loop
-
-Conceptually:
-
-```php
-while (true) {
-    $worker = $workerPool->getAvailableWorker();
-
-    if ($worker === null) {
-        break;
-    }
-
-    $job = $queue->pop();
-
-    if ($job === null) {
-        break;
-    }
-
-    $dispatcher->dispatch(
-        $job,
-        $worker
-    );
-}
-```
-
-### Important invariant
-
-A job must not disappear between:
-
-```text
-Queue
 ↓
-Worker
+
+start development server
 ```
-
-This becomes increasingly important later.
-
-### Tests
-
-* [ ] Job goes to available worker
-* [ ] Busy worker does not receive another job
-* [ ] Jobs remain queued when no workers exist
 
 ---
 
-# Phase 6 — ACK / NACK
+# Phase 1 — TCP Server
 
 ## Goal
 
-Introduce reliable completion semantics.
-
-The worker should explicitly report:
-
-```text
-ACK
-```
-
-or:
-
-```text
-NACK
-```
-
-### Success
-
-```text
-READY
-  ↓
-PROCESSING
-  ↓
-ACK
-  ↓
-COMPLETED
-```
-
-### Failure
-
-```text
-READY
-  ↓
-PROCESSING
-  ↓
-NACK
-  ↓
-FAILED
-```
-
-### Result model
-
-```php
-JobResult::success();
-
-JobResult::failure(
-    Throwable $exception
-);
-```
-
-### Important question
-
-What happens if:
-
-```text
-Worker completed the job
-BUT
-dies before ACK reaches Master?
-```
-
-The system cannot safely assume success.
-
-This leads directly to:
-
-> **At-least-once delivery**
-
----
-
-# Phase 7 — Retry System
-
-## Goal
-
-Retry failed jobs.
-
-### Basic flow
-
-```text
-PROCESSING
-     │
-     ▼
-    FAIL
-     │
-     ▼
-Attempts < MaxAttempts?
-     │
-   yes │
-       ▼
-     RETRY
-       │
-       ▼
-     READY
-```
-
-Otherwise:
-
-```text
-FAILED
-   ↓
-DLQ
-```
-
-### Retry policy interface
-
-```php
-interface RetryPolicy
-{
-    public function nextDelay(Job $job): int;
-}
-```
-
-### Implement
-
-#### Fixed delay
-
-```text
-1s
-1s
-1s
-```
-
-#### Exponential backoff
-
-```text
-1s
-2s
-4s
-8s
-```
-
-### Tests
-
-* [ ] Failed job retries
-* [ ] Attempts increase
-* [ ] Max attempts respected
-* [ ] Successful retry completes job
-* [ ] Failed final attempt goes to DLQ
-
----
-
-# Phase 8 — Delayed Jobs
-
-## Goal
-
-Support jobs scheduled for the future.
-
-Example:
-
-```php
-$queue->dispatch(
-    job: $job,
-    delay: 60
-);
-```
-
-Lifecycle:
-
-```text
-CREATED
-   ↓
-DELAYED
-   ↓
-waiting...
-   ↓
-READY
-```
-
-### Architecture
-
-```text
-Delayed Queue
-      │
-      │ time reached
-      ▼
-Ready Queue
-```
-
-### Important implementation concept
-
-Do not repeatedly scan all jobs if possible.
-
-Study:
-
-```text
-Priority queue
-Min heap
-Sorted timestamps
-```
-
-### Tests
-
-* [ ] Delayed job is not immediately available
-* [ ] Job becomes available at correct time
-* [ ] Multiple delayed jobs preserve schedule
-
----
-
-# Phase 9 — Visibility Timeout
-
-## Goal
-
-Solve the problem of workers dying while processing jobs.
-
-Scenario:
-
-```text
-READY
-  ↓
-Worker receives job
-  ↓
-PROCESSING
-  ↓
-Worker crashes 💀
-```
-
-Without protection:
-
-```text
-Job is lost forever
-```
-
-### Solution
-
-When a worker receives a job:
-
-```text
-READY
-  ↓
-PROCESSING
-  ↓
-Invisible for N seconds
-```
-
-If ACK arrives:
-
-```text
-COMPLETED
-```
-
-If no ACK arrives:
-
-```text
-Visibility timeout expires
-       │
-       ▼
-Job returns to READY
-```
-
-Architecture:
-
-```text
-Processing Queue
-
-Job A
-└── deadline: 12:00:30
-```
-
-Monitor:
-
-```text
-now > deadline?
-      │
-     yes
-      │
-      ▼
-READY
-```
-
-### Important concept
-
-This is one reason reliable queues usually provide:
-
-> **At-least-once delivery**
-
-The same job may execute more than once.
-
----
-
-# Phase 10 — Dead Letter Queue
-
-## Goal
-
-Stop permanently failing jobs from retrying forever.
-
-Flow:
-
-```text
-Job
- ↓
-Attempt 1 ❌
- ↓
-Attempt 2 ❌
- ↓
-Attempt 3 ❌
- ↓
-DLQ
-```
-
-### Dead Letter Queue
-
-```text
-Main Queue
-     │
-     ▼
-Retry
-     │
-     ▼
-Dead Letter Queue
-```
-
-### Store
-
-```text
-Original job
-Final exception
-Attempts
-Failure timestamp
-```
-
-### Useful operations
-
-```text
-list()
-inspect()
-retry()
-delete()
-```
-
-### Tests
-
-* [ ] Exhausted job enters DLQ
-* [ ] Failure information preserved
-* [ ] DLQ job can be retried manually
-
----
-
-# Phase 11 — Worker Failure Recovery
-
-## Goal
-
-Handle worker crashes.
-
-Reuse knowledge from:
-
-```text
-php-worker-pool
-```
-
-Scenario:
-
-```text
-Worker
-   │
-   ▼
-Processing Job
-   │
-   💀 SIGKILL
-```
-
-The runtime should:
-
-```text
-SIGCHLD
-   ↓
-Reap worker
-   ↓
-Mark worker DEAD
-   ↓
-Restore capacity
-```
-
-But the job is still important.
-
-It remains:
-
-```text
-PROCESSING
-```
-
-until:
-
-```text
-ACK
-```
-
-or:
-
-```text
-Visibility Timeout
-```
-
-Then:
-
-```text
-PROCESSING
-   ↓
-timeout
-   ↓
-READY
-```
-
-### Critical invariant
-
-> A worker crash must not permanently lose a job.
-
-### Tests
-
-* [ ] Kill worker while idle
-* [ ] Kill worker while busy
-* [ ] Worker is replaced
-* [ ] Job returns to queue
-* [ ] Job can execute again
-
----
-
-# Phase 12 — Persistence
-
-## Goal
-
-Make jobs survive queue process restart.
-
-Start simple.
-
-Do not immediately build a database.
-
----
-
-## Option A — Append-only log
-
-Example:
-
-```text
-jobs.log
-
-CREATE job-1
-PROCESSING job-1
-ACK job-1
-```
-
-On restart:
-
-```text
-Read log
-↓
-Rebuild state
-```
-
-This teaches:
-
-```text
-Event log
-Write-ahead log
-Recovery
-Replay
-```
-
----
-
-## Option B — Snapshot
-
-Periodically:
-
-```text
-Memory
-   ↓
-Snapshot
-   ↓
-jobs.snapshot
-```
-
-On restart:
-
-```text
-Snapshot
-   ↓
-Restore queue
-```
-
----
-
-## Recommended approach
+Understand the lowest-level server architecture.
 
 Implement:
 
 ```text
-Append-only log
-+
-Periodic snapshot
+socket()
+
+↓
+
+bind()
+
+↓
+
+listen()
+
+↓
+
+accept()
 ```
 
-Eventually:
+The server should:
 
-```text
-Snapshot
-+
-Recent log
-=
-Current state
-```
+1. create a TCP socket;
+2. bind to host and port;
+3. listen for connections;
+4. accept clients;
+5. keep track of connected clients.
 
-This is an excellent educational exercise.
+## Result
 
-### Tests
-
-* [ ] Queue survives restart
-* [ ] Ready jobs restored
-* [ ] Delayed jobs restored
-* [ ] Processing jobs handled correctly after restart
+A client can establish a TCP connection.
 
 ---
 
-# Phase 13 — Priority Queues
+# Phase 2 — Client Connection
 
 ## Goal
 
-Support different priorities.
+Represent every connected client explicitly.
+
+Create:
+
+```text
+ClientConnection
+```
+
+Each connection should contain:
+
+```text
+Socket
+
+Read Buffer
+
+Write Buffer
+
+State
+
+Last Activity
+```
+
+Suggested lifecycle:
+
+```text
+NEW
+ │
+ ▼
+CONNECTED
+ │
+ ▼
+READING
+ │
+ ▼
+PROCESSING
+ │
+ ▼
+WRITING
+ │
+ └──────► READING
+             │
+             ▼
+           CLOSED
+```
+
+## Result
+
+The server can manage multiple clients independently.
+
+---
+
+# Phase 3 — Event Loop
+
+## Goal
+
+Replace blocking client handling with event-driven I/O.
+
+Initial implementation:
+
+```text
+stream_select()
+```
+
+Conceptually:
+
+```php
+while ($running) {
+    $events = $eventLoop->wait();
+
+    foreach ($events as $event) {
+        $event->handle();
+    }
+}
+```
+
+The Event Loop should initially support:
+
+```text
+Readable sockets
+
+Writable sockets
+```
+
+Timers will be introduced later.
+
+## Result
+
+One process can manage multiple TCP clients.
+
+---
+
+# Phase 4 — Non-Blocking Sockets
+
+## Goal
+
+Make the server genuinely event-driven.
+
+Configure sockets as:
+
+```text
+non-blocking
+```
+
+Important rule:
+
+> The Event Loop must never block waiting for an individual client.
+
+Architecture:
+
+```text
+Client A ─┐
+Client B ─┼──► Event Loop
+Client C ─┘
+```
+
+The server reacts only when a socket is ready.
+
+## Result
+
+Slow clients do not block other clients.
+
+---
+
+# Phase 5 — Read Buffer
+
+## Goal
+
+Handle TCP as a byte stream.
+
+A command is not guaranteed to arrive in one read.
 
 Example:
 
 ```text
-HIGH
-NORMAL
-LOW
+SET foo
+```
+
+could arrive as:
+
+```text
+SET f
+```
+
+then:
+
+```text
+oo
+```
+
+Therefore:
+
+```text
+Socket
+   │
+   ▼
+Read
+   │
+   ▼
+Read Buffer
+   │
+   ▼
+Complete Command?
+   │
+   ├── No → Wait
+   │
+   └── Yes → Parse
+```
+
+Create:
+
+```text
+ReadBuffer
+```
+
+## Result
+
+Partial TCP messages are handled correctly.
+
+---
+
+# Phase 6 — Redis Protocol
+
+## Goal
+
+Implement a small subset of the Redis Serialization Protocol.
+
+Start with the simplest protocol representation.
+
+For example:
+
+```text
++OK\r\n
+```
+
+```text
+:100\r\n
+```
+
+```text
+$5\r\nhello\r\n
+```
+
+Then implement arrays:
+
+```text
+*2\r\n
+$3\r\n
+GET\r\n
+$3\r\n
+foo\r\n
+```
+
+Create:
+
+```text
+RespParser
+RespEncoder
+```
+
+## Result
+
+The server can communicate using RESP-compatible messages.
+
+---
+
+# Phase 7 — RESP Parser
+
+## Goal
+
+Convert raw bytes into protocol values.
+
+Example:
+
+```text
+*2\r\n
+$3\r\n
+GET\r\n
+$3\r\n
+foo\r\n
+```
+
+becomes:
+
+```text
+[
+    'GET',
+    'foo',
+]
+```
+
+The parser must support incomplete input.
+
+Example:
+
+```text
+*2\r\n
+$3\r\n
+GET\r\n
+```
+
+should result in:
+
+```text
+INCOMPLETE
+```
+
+rather than an error.
+
+## Result
+
+The protocol parser can process fragmented network input.
+
+---
+
+# Phase 8 — Command Model
+
+## Goal
+
+Separate protocol parsing from command execution.
+
+Create:
+
+```text
+Command
+```
+
+Example:
+
+```text
+[
+    'SET',
+    'foo',
+    'bar',
+]
+```
+
+becomes:
+
+```text
+SetCommand(
+    key: 'foo',
+    value: 'bar'
+)
+```
+
+Possible architecture:
+
+```text
+RESP
+
+↓
+
+Parser
+
+↓
+
+Command
+
+↓
+
+Dispatcher
+
+↓
+
+Handler
+```
+
+## Result
+
+Protocol logic and database logic are separated.
+
+---
+
+# Phase 9 — In-Memory Store
+
+## Goal
+
+Create the database core.
+
+Initial storage:
+
+```php
+array<string, mixed>
 ```
 
 Architecture:
 
 ```text
-Dispatcher
+Command Handler
 
-HIGH queue
-    ↓
-NORMAL queue
-    ↓
-LOW queue
+↓
+
+Store
+
+↓
+
+Memory
 ```
 
-### Important problem
+Create:
 
-Naive priority can cause starvation.
+```text
+StoreInterface
+InMemoryStore
+```
+
+## Result
+
+The server has a basic in-memory database.
+
+---
+
+# Phase 10 — Basic Commands
+
+## Goal
+
+Implement the first commands.
+
+Start with:
+
+```text
+PING
+```
+
+```text
+SET key value
+```
+
+```text
+GET key
+```
+
+```text
+DEL key
+```
+
+```text
+EXISTS key
+```
+
+```text
+INCR key
+```
 
 Example:
 
 ```text
-HIGH HIGH HIGH HIGH HIGH...
+SET name Tanat
 ```
 
-Then:
+then:
 
 ```text
-LOW never executes
+GET name
 ```
 
-Study:
+returns:
 
 ```text
-Strict priority
-Weighted priority
-Fair scheduling
-Round robin
+Tanat
 ```
 
-### Example
+## Result
 
-```text
-HIGH   → 5 jobs
-NORMAL → 3 jobs
-LOW    → 1 job
-```
+The server behaves like a tiny Redis-like database.
 
 ---
 
-# Phase 14 — Metrics
+# Phase 11 — Command Dispatcher
 
 ## Goal
 
-Make the system observable.
+Route commands to handlers.
+
+Architecture:
+
+```text
+Command
+   │
+   ▼
+Command Dispatcher
+   │
+   ├── PING
+   ├── GET
+   ├── SET
+   ├── DEL
+   └── INCR
+```
+
+Create:
+
+```text
+CommandDispatcher
+CommandHandlerInterface
+```
+
+Example:
+
+```text
+GET
+
+↓
+
+GetCommandHandler
+```
+
+## Result
+
+Adding new commands does not require modifying the entire server.
+
+---
+
+# Phase 12 — Response Encoder
+
+## Goal
+
+Convert command results back to RESP.
+
+Example:
+
+```text
+PING
+```
+
+returns:
+
+```text
++PONG\r\n
+```
+
+Example:
+
+```text
+GET foo
+```
+
+returns:
+
+```text
+$3\r\nbar\r\n
+```
+
+Architecture:
+
+```text
+Command Handler
+
+↓
+
+Result
+
+↓
+
+RESP Encoder
+
+↓
+
+Write Buffer
+
+↓
+
+Socket
+```
+
+## Result
+
+Clients receive valid RESP responses.
+
+---
+
+# Phase 13 — Write Buffer
+
+## Goal
+
+Correctly handle partial socket writes.
+
+A response may be larger than what the socket can write immediately.
+
+```text
+Response
+   │
+   ▼
+write()
+   │
+   ▼
+Partial Write
+   │
+   ▼
+Write Buffer
+   │
+   ▼
+Writable Event
+   │
+   ▼
+Continue
+```
+
+The Event Loop should monitor writable sockets only when necessary.
+
+## Result
+
+Large responses and slow clients are handled correctly.
+
+---
+
+# Phase 14 — Multiple Commands
+
+## Goal
+
+Allow multiple commands in one TCP read.
+
+Example:
+
+```text
+PING
+
+SET foo bar
+
+GET foo
+
+DEL foo
+```
+
+All commands may arrive in one network packet.
+
+The parser should process:
+
+```text
+Buffer
+
+↓
+
+Command 1
+
+↓
+
+Command 2
+
+↓
+
+Command 3
+
+↓
+
+Remaining Partial Data
+```
+
+## Result
+
+The server can process multiple commands from one read.
+
+---
+
+# Phase 15 — Pipelining
+
+## Goal
+
+Understand command pipelining.
+
+Client:
+
+```text
+SET counter 1
+INCR counter
+GET counter
+```
+
+The client can send all commands without waiting for each response.
+
+Architecture:
+
+```text
+Client
+   │
+   ├── Command 1
+   ├── Command 2
+   └── Command 3
+            │
+            ▼
+        Event Loop
+            │
+            ▼
+       Command Queue
+            │
+            ▼
+        Responses
+```
+
+## Result
+
+The server supports pipelined commands.
+
+---
+
+# Phase 16 — TTL
+
+## Goal
+
+Understand expiration and timers.
+
+Example:
+
+```text
+SET session abc EX 30
+```
+
+The key should expire after 30 seconds.
+
+Store:
+
+```text
+Key
+
+Value
+
+Expiration Timestamp
+```
+
+Architecture:
+
+```text
+SET
+
+↓
+
+Store Value
+
++
+
+Expiration
+
+↓
+
+Timer / Expiration Check
+
+↓
+
+Delete Key
+```
+
+## Result
+
+Keys can expire automatically.
+
+---
+
+# Phase 17 — Expiration Strategy
+
+## Goal
+
+Explore different TTL implementation strategies.
+
+Implement an initial simple strategy:
+
+```text
+Lazy Expiration
+```
+
+When accessing a key:
+
+```text
+Key Exists?
+
+↓
+
+Expired?
+
+├── Yes → Delete
+│
+└── No → Return Value
+```
+
+Then experiment with:
+
+```text
+Active Expiration
+```
+
+using Event Loop timers.
+
+Compare:
+
+```text
+Lazy Expiration
+
+vs
+
+Active Expiration
+```
+
+## Result
+
+The project demonstrates a real database design trade-off.
+
+---
+
+# Phase 18 — Event Loop Timers
+
+## Goal
+
+Extend the Event Loop with timers.
+
+Architecture:
+
+```text
+Event Loop
+   │
+   ├── Read Events
+   ├── Write Events
+   └── Timers
+```
+
+Timers can be used for:
+
+```text
+TTL expiration
+
+Connection timeout
+
+Periodic cleanup
+```
+
+## Result
+
+Time becomes a first-class Event Loop event.
+
+---
+
+# Phase 19 — Connection Timeout
+
+## Goal
+
+Handle idle clients.
 
 Track:
 
 ```text
-Jobs created
-Jobs completed
-Jobs failed
-Jobs retried
-Jobs in DLQ
-
-Queue size
-
-Delayed jobs
-
-Processing jobs
-
-Worker count
-
-Worker crashes
+Last Activity
 ```
 
-### Latency metrics
-
-Separate:
+If:
 
 ```text
-Queue wait time
+now - lastActivity > timeout
 ```
 
-from:
+then:
 
 ```text
-Execution time
+Close Connection
+```
+
+## Result
+
+Abandoned connections do not remain forever.
+
+---
+
+# Phase 20 — Pub/Sub
+
+## Goal
+
+Explore server-side event distribution.
+
+Commands:
+
+```text
+SUBSCRIBE channel
+```
+
+```text
+PUBLISH channel message
+```
+
+Architecture:
+
+```text
+Publisher
+    │
+    ▼
+Event Loop
+    │
+    ▼
+Channel Registry
+    │
+    ├── Subscriber A
+    ├── Subscriber B
+    └── Subscriber C
+```
+
+Example:
+
+```text
+Client A
+
+PUBLISH news hello
+
+        │
+        ▼
+
+Channel: news
+
+        │
+   ┌────┼────┐
+   ▼    ▼    ▼
+  B     C     D
+```
+
+## Result
+
+The server supports basic Pub/Sub.
+
+---
+
+# Phase 21 — Transactions
+
+## Goal
+
+Explore grouped command execution.
+
+Implement:
+
+```text
+MULTI
+EXEC
+DISCARD
+```
+
+Conceptually:
+
+```text
+MULTI
+
+↓
+
+Queue Commands
+
+↓
+
+EXEC
+
+↓
+
+Execute Commands
+```
+
+## Result
+
+The project demonstrates command batching and transaction state.
+
+---
+
+# Phase 22 — Persistence
+
+## Goal
+
+Explore persistence as an optional experiment.
+
+The initial database should remain:
+
+```text
+In-Memory Only
+```
+
+Then optionally experiment with:
+
+```text
+Snapshot
+
+↓
+
+Serialize Store
+
+↓
+
+Write File
 ```
 
 and:
 
 ```text
-End-to-end time
+Server Start
+
+↓
+
+Load Snapshot
+```
+
+This should remain optional because persistence is not the core purpose of the project.
+
+## Result
+
+The project demonstrates the difference between:
+
+```text
+Memory
+
+vs
+
+Persistent Storage
+```
+
+---
+
+# Phase 23 — Graceful Shutdown
+
+## Goal
+
+Stop the server without abruptly dropping active clients.
+
+Lifecycle:
+
+```text
+RUNNING
+    │
+    │ SIGTERM
+    ▼
+DRAINING
+    │
+    │ Stop Accepting
+    ▼
+FINISHING
+    │
+    │ Flush Responses
+    ▼
+STOPPED
+```
+
+During `DRAINING`:
+
+```text
+❌ New Connections
+
+✅ Existing Connections
+
+✅ Pending Responses
+```
+
+## Result
+
+The server can shut down cleanly.
+
+---
+
+# Phase 24 — Error Handling
+
+## Goal
+
+Make protocol and command errors explicit.
+
+Examples:
+
+```text
+Unknown Command
+```
+
+```text
+Wrong Number Of Arguments
+```
+
+```text
+Invalid Integer
+```
+
+```text
+Protocol Error
+```
+
+Responses should use appropriate RESP error values:
+
+```text
+-ERR ...
+```
+
+## Result
+
+Invalid client input does not crash the server.
+
+---
+
+# Phase 25 — Limits
+
+## Goal
+
+Protect the server from pathological input.
+
+Possible limits:
+
+```text
+Maximum command size
+
+Maximum value size
+
+Maximum number of arguments
+
+Maximum connections
+
+Maximum write buffer size
 ```
 
 Example:
 
 ```text
-Queue wait:    250ms
-Execution:      20ms
-Total:         270ms
+Read Buffer > limit
+
+↓
+
+Protocol Error / Close
 ```
 
-Important insight:
+## Result
 
-> A slow job does not necessarily mean a slow handler.
-
-It may mean:
-
-> The job waited in the queue.
+The server has explicit resource boundaries.
 
 ---
 
-# Phase 15 — Graceful Shutdown
+# Phase 26 — Backpressure
 
 ## Goal
 
-Stop safely without losing jobs.
+Understand what happens when a client reads slowly.
 
 Scenario:
 
 ```text
-SIGTERM
+Server
+
+↓
+
+Large Response
+
+↓
+
+Client Reads Slowly
+
+↓
+
+Write Buffer Grows
 ```
 
-The runtime should:
+Implement:
 
 ```text
-Stop accepting new jobs
-       ↓
-Stop dispatching new jobs
-       ↓
-Workers finish current jobs
-       ↓
-ACK results
-       ↓
-Exit
+Maximum Write Buffer Size
 ```
 
-Workers become:
+When exceeded:
 
 ```text
-IDLE
-   ↓
-DRAINING
+Pause Reading
+
+↓
+
+Wait For Writable Event
+
+↓
+
+Buffer Drains
+
+↓
+
+Resume Reading
 ```
 
-Busy workers:
+## Result
 
-```text
-BUSY
-   ↓
-finish job
-   ↓
-STOPPING
-```
-
-After timeout:
-
-```text
-SIGTERM
-   ↓
-grace period
-   ↓
-SIGKILL
-```
-
-Unacknowledged jobs eventually return through visibility timeout.
+Slow clients cannot grow memory indefinitely.
 
 ---
 
-# Phase 16 — Stress and Chaos Testing
+# Phase 27 — Metrics
 
 ## Goal
 
-Prove the system under failure.
+Make server behavior observable.
+
+Track:
+
+```text
+Active Connections
+
+Total Connections
+
+Commands Processed
+
+Commands By Type
+
+Bytes Read
+
+Bytes Written
+
+Errors
+
+Expired Keys
+```
+
+Optional command:
+
+```text
+INFO
+```
+
+## Result
+
+The server exposes basic runtime statistics.
 
 ---
 
-## Stress tests
+# Phase 28 — Tests
+
+Tests should exist at multiple levels.
+
+## Unit Tests
+
+Test independently:
 
 ```text
-1,000 jobs
+RESP Parser
 
-10,000 jobs
+RESP Encoder
 
-100,000 jobs
+Command Dispatcher
+
+Store
+
+TTL
+
+Router / Registry
+
+Timers
+```
+
+## Integration Tests
+
+Test:
+
+```text
+TCP Client
+
+↓
+
+Server
+
+↓
+
+Command
+
+↓
+
+Response
+```
+
+## Failure Tests
+
+Test:
+
+```text
+Partial Request
+
+Invalid RESP
+
+Unknown Command
+
+Slow Client
+
+Large Response
+
+Expired Key
+
+Connection Timeout
+```
+
+## Result
+
+The server behavior is reproducible.
+
+---
+
+# Phase 29 — Benchmarks
+
+## Goal
+
+Measure the server rather than guessing.
+
+Tools:
+
+```text
+redis-benchmark
+
+wrk
+
+custom PHP client
+
+k6
 ```
 
 Measure:
 
 ```text
-Throughput
-Queue latency
-Worker utilization
+Requests / second
+
+Latency
+
+p50
+
+p95
+
+p99
+
 Memory
-CPU
+
+Active Connections
+```
+
+Experiments:
+
+```text
+1 client
+
+10 clients
+
+100 clients
+
+1000 clients
+```
+
+Compare:
+
+```text
+PING
+
+GET
+
+SET
+
+INCR
+
+Pipelining
+```
+
+## Result
+
+The project becomes an experimental performance laboratory.
+
+---
+
+# Phase 30 — Experiments
+
+The repository should contain small executable experiments.
+
+Examples:
+
+```text
+examples/
+│
+├── basic-client.php
+├── pipelining.php
+├── ttl.php
+├── pubsub.php
+├── slow-client.php
+└── graceful-shutdown.php
+```
+
+Each experiment should answer one question.
+
+---
+
+# Suggested Final Structure
+
+```text
+php-mini-redis/
+│
+├── bin/
+│   └── server.php
+│
+├── src/
+│   ├── Server/
+│   │   ├── RedisServer.php
+│   │   ├── ServerConfig.php
+│   │   └── ServerState.php
+│   │
+│   ├── EventLoop/
+│   │   ├── EventLoop.php
+│   │   ├── SelectLoop.php
+│   │   ├── Timer.php
+│   │   └── TimerManager.php
+│   │
+│   ├── Connection/
+│   │   ├── ClientConnection.php
+│   │   ├── ConnectionManager.php
+│   │   ├── ConnectionState.php
+│   │   ├── ReadBuffer.php
+│   │   └── WriteBuffer.php
+│   │
+│   ├── Protocol/
+│   │   ├── RespParser.php
+│   │   ├── RespEncoder.php
+│   │   ├── RespValue.php
+│   │   └── RespException.php
+│   │
+│   ├── Command/
+│   │   ├── Command.php
+│   │   ├── CommandDispatcher.php
+│   │   ├── CommandHandler.php
+│   │   └── Handlers/
+│   │       ├── PingCommand.php
+│   │       ├── GetCommand.php
+│   │       ├── SetCommand.php
+│   │       ├── DelCommand.php
+│   │       └── IncrCommand.php
+│   │
+│   ├── Storage/
+│   │   ├── Store.php
+│   │   ├── InMemoryStore.php
+│   │   └── StoredValue.php
+│   │
+│   ├── Expiration/
+│   │   ├── ExpirationManager.php
+│   │   └── Ttl.php
+│   │
+│   ├── PubSub/
+│   │   ├── ChannelRegistry.php
+│   │   └── Subscriber.php
+│   │
+│   └── Metrics/
+│       └── ServerMetrics.php
+│
+├── examples/
+│
+├── benchmarks/
+│
+├── tests/
+│   ├── Unit/
+│   └── Integration/
+│
+├── docs/
+│   ├── ARCHITECTURE.md
+│   ├── PROTOCOL.md
+│   ├── EVENT_LOOP.md
+│   ├── CONNECTION_LIFECYCLE.md
+│   └── EXPERIMENTS.md
+│
+├── README.md
+├── PLAN.md
+├── composer.json
+├── phpunit.xml
+└── phpstan.neon
 ```
 
 ---
 
-## Chaos tests
+# Implementation Order
 
-Intentionally break the system.
-
-### Kill workers
-
-```bash
-kill -9 <pid>
-```
-
-Expected:
+The recommended implementation order is:
 
 ```text
-Worker dies
-↓
-SIGCHLD
-↓
-Reap
-↓
-Replace worker
-↓
-Unacknowledged job eventually returns
+1. Project Setup
+       ↓
+2. TCP Server
+       ↓
+3. Client Connection
+       ↓
+4. Event Loop
+       ↓
+5. Non-Blocking Sockets
+       ↓
+6. Read Buffer
+       ↓
+7. RESP
+       ↓
+8. RESP Parser
+       ↓
+9. Command Model
+       ↓
+10. In-Memory Store
+       ↓
+11. Basic Commands
+       ↓
+12. Command Dispatcher
+       ↓
+13. Response Encoder
+       ↓
+14. Write Buffer
+       ↓
+15. Multiple Commands
+       ↓
+16. Pipelining
+       ↓
+17. TTL
+       ↓
+18. Timers
+       ↓
+19. Connection Timeout
+       ↓
+20. Pub/Sub
+       ↓
+21. Transactions
+       ↓
+22. Optional Persistence
+       ↓
+23. Graceful Shutdown
+       ↓
+24. Error Handling
+       ↓
+25. Limits
+       ↓
+26. Backpressure
+       ↓
+27. Metrics
+       ↓
+28. Tests
+       ↓
+29. Benchmarks
+       ↓
+30. Experiments
 ```
 
 ---
 
-### Crash queue process
+# Final Principle
+
+Do not optimize for:
+
+> Redis compatibility.
+
+Optimize for:
+
+> Understanding.
+
+Every component should answer:
 
 ```text
-Queue Runtime 💀
+What problem does this solve?
+
+Why does it exist?
+
+What happens if we remove it?
+
+What failure scenario does it prevent?
+
+What trade-off does this design introduce?
 ```
 
-Restart:
+The final project should provide an:
 
-```text
-Persistence recovery
-↓
-Restore state
-```
-
----
-
-### Slow job
-
-```php
-sleep(60);
-```
-
-Observe:
-
-```text
-Visibility timeout
-Execution timeout
-Worker termination
-Retry
-```
-
----
-
-### Always failing job
-
-```text
-Attempt 1 ❌
-Attempt 2 ❌
-Attempt 3 ❌
-DLQ
-```
-
----
-
-# Important Engineering Questions
-
-The project should explicitly answer these questions.
-
----
-
-## 1. Why is exactly-once delivery difficult?
-
-Scenario:
-
-```text
-Worker executes job
-      ↓
-Side effect happens
-      ↓
-Worker crashes before ACK
-```
-
-What should the queue do?
-
-```text
-Retry?
-```
-
-Then the job may execute twice.
-
-```text
-Do not retry?
-```
-
-Then the job may be lost.
-
-This is why many systems choose:
-
-> **At-least-once delivery**
-
-and require:
-
-> **Idempotent job handlers**
-
----
-
-## 2. What is the difference between a request timeout and visibility timeout?
-
-```text
-Request timeout
-```
-
-is about:
-
-> How long someone waits.
-
-```text
-Visibility timeout
-```
-
-is about:
-
-> How long a job may remain unacknowledged.
-
-These are different problems.
-
----
-
-## 3. Why does ACK exist?
-
-Without ACK:
-
-```text
-Worker received job
-```
-
-does not mean:
-
-```text
-Job completed successfully
-```
-
-ACK creates explicit completion semantics.
-
----
-
-## 4. Why can jobs execute twice?
-
-Because:
-
-```text
-Job executed
-↓
-ACK lost
-↓
-Queue assumes failure
-↓
-Job retries
-```
-
-This is expected in an at-least-once system.
-
----
-
-## 5. Why should handlers be idempotent?
-
-Example:
-
-Bad:
-
-```text
-Charge credit card
-```
-
-twice.
-
-Better:
-
-```text
-Charge order #123
-```
-
-with an idempotency key.
-
----
-
-## 6. What happens when a worker crashes?
-
-The worker may disappear.
-
-The job should not.
-
-That distinction is central to the architecture:
-
-```text
-Worker lifecycle
-≠
-Job lifecycle
-```
-
----
-
-# Suggested Development Order
-
-The recommended order is:
-
-```text
-Phase 0
-Project setup
-    ↓
-Phase 1
-Job model
-    ↓
-Phase 2
-FIFO queue
-    ↓
-Phase 3
-Producer
-    ↓
-Phase 4
-Worker
-    ↓
-Phase 5
-Dispatcher
-    ↓
-Phase 6
-ACK / NACK
-    ↓
-Phase 7
-Retries
-    ↓
-Phase 8
-Delayed jobs
-    ↓
-Phase 9
-Visibility timeout
-    ↓
-Phase 10
-Dead Letter Queue
-    ↓
-Phase 11
-Worker crash recovery
-    ↓
-Phase 12
-Persistence
-    ↓
-Phase 13
-Priority queues
-    ↓
-Phase 14
-Metrics
-    ↓
-Phase 15
-Graceful shutdown
-    ↓
-Phase 16
-Stress and chaos testing
-```
-
----
-
-# Minimal Milestone
-
-The first important milestone should be:
-
-```text
-Producer
-   ↓
-Queue
-   ↓
-Worker
-   ↓
-Handler
-   ↓
-ACK
-   ↓
-Completed
-```
-
-Only after this works should additional reliability features be added.
-
----
-
-# Final Goal
-
-The final repository should make this entire lifecycle understandable:
-
-```text
-Producer
-    │
-    ▼
-CREATE JOB
-    │
-    ▼
-READY
-    │
-    ▼
-WAITING IN QUEUE
-    │
-    ▼
-DISPATCH
-    │
-    ▼
-PROCESSING
-    │
-    ├───────────────┐
-    │               │
-    ▼               ▼
-   ACK             NACK
-    │               │
-    ▼               ▼
-COMPLETED         RETRY
-                    │
-                    ▼
-                 DELAYED
-                    │
-                    ▼
-                  READY
-                    │
-                    ▼
-              max attempts?
-                    │
-                   no
-                    │
-                    ▼
-                   DLQ
-```
-
-The repository should be useful as an executable answer to:
-
-> **How does reliable asynchronous job processing work inside?**
-
-The ideal workflow should be:
-
-```text
-Read
-↓
-Run
-↓
-Experiment
-↓
-Break something
-↓
-Observe
-↓
-Understand
-```
-
----
-
-# Non-Goals
-
-This project should NOT try to become:
-
-```text
-RabbitMQ
-Kafka
-Redis
-Temporal
-Laravel Queue
-Sidekiq
-```
-
-Avoid adding complexity just to imitate production systems.
-
-The most important property of the project is:
-
-> **Every important mechanism should be understandable.**
-
-A smaller system that clearly demonstrates:
-
-```text
-ACK
-Retry
-Visibility timeout
-Worker crash
-DLQ
-Persistence
-```
-
-is more valuable for learning than a production-scale system with hundreds of abstractions.
-
----
-
-# Repository Philosophy
-
-```text
-Small enough to understand.
-Simple enough to modify.
-Real enough to fail.
-Reliable enough to study.
-```
-
-This is an educational engineering playground.
-
-Not a black box.
-
-The user should be able to:
-
-```text
-Open the code
-↓
-Follow one job
-↓
-Watch it move through the system
-↓
-Kill a worker
-↓
-See what happens
-↓
-Understand why the architecture exists
-```
-
-That is the definition of success for this project.
+> **Executable mental model of an event-driven in-memory database server.**
