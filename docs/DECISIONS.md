@@ -117,23 +117,24 @@ number of concrete cases over an abstraction built ahead of a second user.
 
 ## `InMemoryStore` and `SelectLoop` both take an injectable clock
 
-Both accept an optional `\Closure(): float` in their constructor, defaulting
-to `microtime(true)`. Without it, testing TTL expiry or timer firing would
-mean either a real `sleep()` (slow, and still not exact) or asserting
-nothing at all. A test supplies a closure over a local `$now` variable and
-advances it explicitly between calls - see
+Anything that computes a deadline or measures elapsed time takes a `Clock`
+in its constructor, defaulting to `SystemClock` (`microtime(true)`).
+Without it, testing TTL expiry or timer firing would mean either a real
+`sleep()` (slow, and still not exact) or asserting nothing at all. Tests
+pass `FakeClock`, whose time only moves when `advance()` says so - see
 `InMemoryStoreTest::testAValueWithATtlIsGoneOnceItExpires` and
 `SelectLoopTest::testATimerFiresAlongsideStreamActivity`.
 
-The closure must be a genuine closure captured with `use (&$now)`, not a
-`static fn(): float => $now` arrow function - an arrow function captures
-`$now` *by value* at the moment it is created, so incrementing the outer
-variable afterward has no effect on what the closure returns. This was a
-real bug during Phase 16/17 test-writing (both `InMemoryStoreTest` and
-`RedisServerTest`'s TTL/idle-timeout tests initially used the arrow form
-and silently asserted against a clock that never advanced), fixed by
-switching every test clock to `static function () use (&$now): float {
-return $now; }`.
+**It was a `\Closure(): float` first, and that is why it is an interface
+now.** A closure had to be a genuine one captured with `use (&$now)`,
+never a `static fn(): float => $now` arrow function - an arrow function
+captures `$now` *by value* when it is created, so advancing the outer
+variable afterwards changes nothing it returns. That was a real bug during
+Phase 16/17 test-writing: both `InMemoryStoreTest` and `RedisServerTest`'s
+TTL/idle-timeout tests asserted against a clock that never moved and
+passed anyway. A named `FakeClock` with an `advance()` method has no
+by-value form to get wrong, and matches how `php-worker-pool` states the
+same seam.
 
 ## Two independent buffer classes, introduced two phases apart
 
