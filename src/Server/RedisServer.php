@@ -21,6 +21,7 @@ use App\Persistence\SnapshotStore;
 use App\Protocol\ProtocolException;
 use App\Protocol\RespEncoder;
 use App\Protocol\RespStreamReader;
+use App\Protocol\RespType;
 use App\Protocol\RespValue;
 use App\PubSub\ChannelRegistry;
 use App\Storage\InMemoryStore;
@@ -66,6 +67,16 @@ final class RedisServer
         ?float $snapshotIntervalSeconds = null,
         private readonly Clock $clock = new SystemClock(),
         private readonly float $shutdownGraceSeconds = 5.0,
+        // A read buffer that grows past this without ever yielding a
+        // complete value is either a broken client or a hostile one -
+        // either way, left unbounded it is a memory-exhaustion vector.
+        private readonly int $maxReadBufferBytes = 512 * 1024,
+        // Protects against a single command with an absurd number of
+        // arguments (e.g. a scripted client gone wrong), independent of
+        // the byte-size limit above.
+        private readonly int $maxArgumentsPerCommand = 1024,
+        // Null means unbounded.
+        private readonly ?int $maxConnections = null,
     ) {
         $this->socket = new ServerSocket($config);
         $this->connections = new ConnectionManager();
@@ -152,6 +163,13 @@ final class RedisServer
         $socket = $this->socket->accept($timeoutSeconds);
 
         if ($socket === false) {
+            return null;
+        }
+
+        if ($this->maxConnections !== null && $this->connections->count() >= $this->maxConnections) {
+            @fwrite($socket, $this->encoder->encode(RespValue::error('ERR max number of clients reached')));
+            fclose($socket);
+
             return null;
         }
 
@@ -271,6 +289,16 @@ final class RedisServer
             $connection->setState(ConnectionState::Reading);
             $connection->appendToReadBuffer($chunk);
             $this->processBufferedCommands($connection);
+
+            // processBufferedCommands() may already have disconnected this
+            // connection (a malformed stream) - nothing left to check.
+            if ($connection->state() === ConnectionState::Closed) {
+                return;
+            }
+
+            if ($connection->readBuffer()->length() > $this->maxReadBufferBytes) {
+                $this->sendErrorAndDisconnect($connection, 'ERR Protocol error: too big buffer');
+            }
         });
     }
 
@@ -302,6 +330,14 @@ final class RedisServer
     private function executeValue(ClientConnection $connection, RespValue $value): void
     {
         $connection->setState(ConnectionState::Processing);
+
+        if ($value->type === RespType::Array && is_array($value->value) && count($value->value) > $this->maxArgumentsPerCommand) {
+            $connection->setState(ConnectionState::Writing);
+            $connection->appendToWriteBuffer($this->encoder->encode(RespValue::error('ERR too many arguments')));
+            $this->flushWriteBuffer($connection);
+
+            return;
+        }
 
         try {
             $command = Command::fromRespValue($value);

@@ -95,7 +95,7 @@ one test answers for one line of the plan. The whole suite runs with
 - [x] Phase 22 — Persistence
 - [x] Phase 23 — Graceful Shutdown
 - [x] Phase 24 — Error Handling
-- [ ] Phase 25 — Limits
+- [x] Phase 25 — Limits
 - [ ] Phase 26 — Backpressure
 - [ ] Phase 27 — Metrics
 - [ ] Phase 28 — Tests
@@ -853,13 +853,39 @@ connection, and even that case is told why before it closes.
 ## Goal
 
 Protect the server from pathological input: maximum command size, maximum
-value size, maximum argument count, maximum connections.
+number of arguments, maximum connections.
 
 ## Tasks
 
-* [ ] Enforce a maximum read buffer size before parsing
-* [ ] Enforce a maximum number of arguments per command
-* [ ] Enforce a maximum connection count
+* [x] `maxReadBufferBytes` (default 512 KiB): a connection's ReadBuffer
+      left over after every complete value has been consumed is checked
+      against this after each read - a value that can never complete
+      (e.g. a bulk string declaring a huge length whose body never
+      finishes arriving) gets a RESP protocol error and disconnects,
+      instead of growing forever
+* [x] `maxArgumentsPerCommand` (default 1024): a command with more
+      elements than this gets `-ERR too many arguments` - a command-level
+      error like Phase 24's others, so the connection itself survives
+* [x] `maxConnections` (null = unbounded): a connection accepted past the
+      limit gets `-ERR max number of clients reached` and is closed
+      immediately, before it is ever tracked or counted
+
+## Definition of Done
+
+None of the three limits affect a well-behaved client at all, and each one
+independently protects against the specific pathological input it names
+without tearing down anything it doesn't have to (the argument-count limit
+in particular does not disconnect - only the buffer-size and
+connection-count limits do, since only those two are about bytes/sockets
+rather than a single malformed command).
+
+## Tests
+
+- [tests/Server/RedisServerTest.php](../tests/Server/RedisServerTest.php) -
+  `testAConnectionOverTheLimitIsRejectedWithARespErrorAndClosed`,
+  `testACommandWithTooManyArgumentsIsRejectedWithoutDisconnecting` (the
+  connection keeps working afterward - a following command still gets a
+  normal reply), `testAnOversizedReadBufferGetsARespErrorAndIsDisconnected`.
 
 ---
 

@@ -688,4 +688,94 @@ final class RedisServerTest extends TestCase
         self::assertLessThan(2.0, $elapsed);
         self::assertSame(0, $server->connectedClientCount());
     }
+
+    public function testAConnectionOverTheLimitIsRejectedWithARespErrorAndClosed(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(
+            new ServerConfig(host: '127.0.0.1', port: 0),
+            $loop,
+            maxConnections: 1,
+        );
+
+        try {
+            $clientA = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($clientA, $errstr);
+            self::assertInstanceOf(ClientConnection::class, $server->acceptClient(5));
+            self::assertSame(1, $server->connectedClientCount());
+
+            $clientB = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($clientB, $errstr);
+            self::assertNull($server->acceptClient(5));
+
+            self::assertSame(1, $server->connectedClientCount());
+            self::assertStringStartsWith('-ERR max number of clients reached', fread($clientB, 1024));
+            self::assertSame('', fread($clientB, 1024));
+
+            fclose($clientA);
+            fclose($clientB);
+        } finally {
+            $server->stop();
+        }
+    }
+
+    public function testACommandWithTooManyArgumentsIsRejectedWithoutDisconnecting(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(
+            new ServerConfig(host: '127.0.0.1', port: 0),
+            $loop,
+            maxArgumentsPerCommand: 2,
+        );
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+            $server->acceptClient(5);
+
+            fwrite($client, "*3\r\n\$3\r\nSET\r\n\$3\r\nfoo\r\n\$3\r\nbar\r\n");
+            $loop->tick(1);
+            self::assertSame("-ERR too many arguments\r\n", fread($client, 1024));
+
+            // The connection itself survives: a following, within-limit
+            // command still works.
+            fwrite($client, "*1\r\n\$4\r\nPING\r\n");
+            $loop->tick(1);
+            self::assertSame("+PONG\r\n", fread($client, 1024));
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
+
+    public function testAnOversizedReadBufferGetsARespErrorAndIsDisconnected(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(
+            new ServerConfig(host: '127.0.0.1', port: 0),
+            $loop,
+            maxReadBufferBytes: 32,
+        );
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+            $connection = $server->acceptClient(5);
+            self::assertInstanceOf(ClientConnection::class, $connection);
+
+            // A bulk string declared far larger than the buffer limit,
+            // whose body never arrives - it can only ever keep growing.
+            fwrite($client, "\$1000000\r\nnot even close to that much data");
+            $loop->tick(1);
+
+            self::assertStringStartsWith('-ERR Protocol error: too big buffer', fread($client, 1024));
+            self::assertSame(0, $server->connectedClientCount());
+            self::assertSame(ConnectionState::Closed, $connection->state());
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
 }

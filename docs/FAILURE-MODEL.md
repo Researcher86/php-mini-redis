@@ -76,11 +76,16 @@ response, or a client that never reads at all, grows that connection's
 `WriteBuffer` without limit until Phase 26 adds a cap. Until then, a
 pathological client is a real, if narrow, memory-growth vector.
 
-## No resource limits yet (Phase 25)
+## Resource limits are capped, but coarse
 
-There is currently no cap on: read buffer size before parsing, arguments
-per command, or total connection count. A client sending an enormous bulk
-string, or opening far more connections than intended, is not rejected.
+`RedisServer` caps read buffer size, arguments per command, and total
+connection count (see
+[PHASES.md](PHASES.md#phase-25--limits)) - but the buffer-size limit only
+catches a value that can *never* complete; a client sending many small,
+individually-valid commands in a slow drip is not rate-limited by it at
+all, and there is no per-client accounting (one client's oversized buffer
+disconnects only that client, but a moderate one from each of many
+connections is still bounded only by `maxConnections`, if set).
 
 ## Timers are best-effort, not exact
 
