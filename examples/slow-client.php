@@ -22,15 +22,18 @@ declare(strict_types=1);
 
 require __DIR__ . '/bootstrap.php';
 
-$slow = exampleConnect();
+$slow = exampleClient();
 
 $valueSize = 400 * 1024;
-exampleCommand($slow, ['SET', 'big', str_repeat('x', $valueSize)]);
+$slow->set('big', str_repeat('x', $valueSize));
 
 $requests = 60;
 
+// sendWithoutReading(), not get(): the whole point is a connection whose
+// replies nobody collects. Any ordinary call would drain them and there
+// would be no backlog to watch.
 for ($i = 0; $i < $requests; $i++) {
-    exampleSend($slow, ['GET', 'big']);
+    $slow->sendWithoutReading('GET', 'big');
 }
 
 printf(
@@ -41,14 +44,14 @@ printf(
 );
 
 echo "[healthy client] pinging 10 times while the slow client sits there...\n";
-$healthy = exampleConnect();
+$healthy = exampleClient();
 
 for ($i = 1; $i <= 10; $i++) {
     $start = microtime(true);
-    exampleCommand($healthy, ['PING']);
+    $healthy->ping();
     printf("[healthy client] PING %d answered in %.2f ms\n", $i, (microtime(true) - $start) * 1000);
     usleep(100_000);
 }
 
-fclose($healthy);
-fclose($slow);
+$healthy->close();
+$slow->close();

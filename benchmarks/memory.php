@@ -54,14 +54,14 @@ if ($serverPid <= 0) {
 
 [$rssBefore, $peakBefore] = serverMemory($serverPid);
 
-$socket = exampleConnect();
+$client = exampleClient(timeoutSeconds: 30.0);
 
 $value = str_repeat('x', VALUE_SIZE);
 $prefix = 'mem:' . getmypid() . ':';
 $start = microtime(true);
 
 for ($i = 0; $i < KEYS; $i++) {
-    exampleCommand($socket, ['SET', $prefix . $i, $value]);
+    $client->set($prefix . $i, $value);
 }
 
 $elapsed = microtime(true) - $start;
@@ -76,7 +76,7 @@ printf("Server RSS after:  %s\n", $rssAfter > 0 ? formatBytes($rssAfter) : 'n/a'
 printf("Server RSS peak:   %s\n", $peakAfter > 0 ? formatBytes($peakAfter) : 'n/a');
 printf("Bytes per key:     %s\n", $rssAfter > 0 && $rssAfter >= $rssBefore ? formatBytes(intdiv($rssAfter - $rssBefore, KEYS)) : 'n/a');
 
-fclose($socket);
+$client->close();
 
 function formatBytes(int $bytes): string
 {

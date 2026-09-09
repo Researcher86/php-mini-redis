@@ -2,69 +2,33 @@
 
 declare(strict_types=1);
 
-use App\Protocol\RespEncoder;
-use App\Protocol\RespParser;
-use App\Protocol\RespValue;
+use App\Sdk\RedisClient;
+use App\Sdk\RedisClientException;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 /**
  * Shared by every script under examples/: each one answers one question
  * against a real, already-running server (start it first with
- * `make run-server`), so this just holds the connect/send/receive
- * boilerplate none of them are actually about.
+ * `make run-server`), so this just builds the client they all use - and
+ * turns "nothing is listening on 6380" into the sentence that actually
+ * helps, instead of a stack trace from the middle of the demo.
  */
-function exampleConnect(): mixed
+function exampleClient(float $timeoutSeconds = 5.0): RedisClient
 {
-    $host = getenv('REDIS_HOST') ?: '127.0.0.1';
-    $port = (int) (getenv('REDIS_PORT') ?: 6380);
+    $client = new RedisClient(
+        getenv('REDIS_HOST') ?: '127.0.0.1',
+        (int) (getenv('REDIS_PORT') ?: 6380),
+        $timeoutSeconds,
+    );
 
-    $socket = @stream_socket_client(sprintf('tcp://%s:%d', $host, $port), $errno, $errstr, 5);
+    try {
+        $client->ping();
+    } catch (RedisClientException $exception) {
+        fwrite(STDERR, $exception->getMessage() . " - is `make run-server` running?\n");
 
-    if ($socket === false) {
-        fwrite(STDERR, sprintf("Could not connect to %s:%d: %s (%d) - is `make run-server` running?\n", $host, $port, $errstr, $errno));
         exit(1);
     }
 
-    return $socket;
-}
-
-/**
- * @param resource $socket
- * @param list<string> $arguments
- */
-function exampleSend(mixed $socket, array $arguments): void
-{
-    $command = RespValue::array(array_map(RespValue::bulkString(...), $arguments));
-    fwrite($socket, (new RespEncoder())->encode($command));
-}
-
-/** @param resource $socket */
-function exampleReceive(mixed $socket): RespValue
-{
-    $parser = new RespParser();
-    $buffer = '';
-
-    while (($parsed = $parser->parse($buffer)) === null) {
-        $chunk = fread($socket, 65536);
-
-        if ($chunk === false || $chunk === '') {
-            fwrite(STDERR, "Connection closed before a reply arrived.\n");
-            exit(1);
-        }
-
-        $buffer .= $chunk;
-    }
-
-    [$value] = $parsed;
-
-    return $value;
-}
-
-/** @param list<string> $arguments */
-function exampleCommand(mixed $socket, array $arguments): RespValue
-{
-    exampleSend($socket, $arguments);
-
-    return exampleReceive($socket);
+    return $client;
 }

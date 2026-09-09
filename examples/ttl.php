@@ -11,19 +11,19 @@ declare(strict_types=1);
 
 require __DIR__ . '/bootstrap.php';
 
-$socket = exampleConnect();
+$client = exampleClient();
 
 echo "SET session abc EX 2\n";
-echo '-> ' . exampleCommand($socket, ['SET', 'session', 'abc', 'EX', '2'])->value . "\n\n";
+$client->set('session', 'abc', ttlSeconds: 2);
+echo "-> OK\n\n";
 
 echo "GET session (immediately)\n";
-echo '-> ' . exampleCommand($socket, ['GET', 'session'])->value . "\n\n";
+echo '-> ' . ($client->get('session') ?? '(nil)') . "\n\n";
 
 echo "Waiting 3 seconds for the TTL to pass...\n\n";
 sleep(3);
 
 echo "GET session (after the TTL)\n";
-$value = exampleCommand($socket, ['GET', 'session'])->value;
-echo '-> ' . ($value === null ? '(nil)' : $value) . "\n";
+echo '-> ' . ($client->get('session') ?? '(nil)') . "\n";
 
-fclose($socket);
+$client->close();

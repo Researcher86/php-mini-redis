@@ -12,61 +12,29 @@ declare(strict_types=1);
 
 require __DIR__ . '/bootstrap.php';
 
-use App\Protocol\RespEncoder;
-use App\Protocol\RespParser;
-use App\Protocol\RespValue;
-
 const ROUND_TRIPS = 500;
 
-$sequential = exampleConnect();
+$sequential = exampleClient();
 $start = microtime(true);
 
 for ($i = 0; $i < ROUND_TRIPS; $i++) {
-    exampleCommand($sequential, ['PING']);
+    $sequential->ping();
 }
 
 $sequentialSeconds = microtime(true) - $start;
-fclose($sequential);
+$sequential->close();
 
-$pipelined = exampleConnect();
+// The same commands, written back-to-back before any reply is read: one
+// round trip for the batch instead of one each. The client still reads
+// every reply, in order - the saving is in the waiting, not in the work.
+$pipelined = exampleClient();
 $start = microtime(true);
 
-$encoder = new RespEncoder();
-$batch = str_repeat($encoder->encode(RespValue::array([RespValue::bulkString('PING')])), ROUND_TRIPS);
-fwrite($pipelined, $batch);
-
-// Several replies can arrive concatenated in one read, unlike a single
-// request/reply exchange - so this keeps one buffer across every read,
-// consuming exactly one reply's worth of bytes at a time, rather than
-// starting fresh (and losing whatever followed) on each call.
-$parser = new RespParser();
-$buffer = '';
-$received = 0;
-
-while ($received < ROUND_TRIPS) {
-    $parsed = $parser->parse($buffer);
-
-    if ($parsed === null) {
-        $chunk = fread($pipelined, 65536);
-
-        if ($chunk === false || $chunk === '') {
-            fwrite(STDERR, "Connection closed early.\n");
-            exit(1);
-        }
-
-        $buffer .= $chunk;
-
-        continue;
-    }
-
-    [, $consumed] = $parsed;
-    $buffer = substr($buffer, $consumed);
-    $received++;
-}
+$replies = $pipelined->pipeline(array_fill(0, ROUND_TRIPS, ['PING']));
 
 $pipelinedSeconds = microtime(true) - $start;
-fclose($pipelined);
+$pipelined->close();
 
 printf("%d PING round trips, one at a time: %.3fs\n", ROUND_TRIPS, $sequentialSeconds);
-printf("%d PINGs pipelined, replies read after:  %.3fs\n", ROUND_TRIPS, $pipelinedSeconds);
+printf("%d PINGs pipelined, replies read after:  %.3fs (%d replies)\n", ROUND_TRIPS, $pipelinedSeconds, count($replies));
 printf("Pipelining was %.1fx faster here.\n", $sequentialSeconds / max($pipelinedSeconds, 0.000001));

@@ -19,34 +19,36 @@ $subscriberPid = pcntl_fork();
 
 if ($subscriberPid === -1) {
     fwrite(STDERR, "pcntl_fork() failed\n");
+
     exit(1);
 }
 
 if ($subscriberPid === 0) {
     // Child: subscribe and print whatever arrives, until the parent kills it.
-    $socket = exampleConnect();
-    $reply = exampleCommand($socket, ['SUBSCRIBE', 'news']);
-    printf("[subscriber] subscribed, now watching %d channel(s)\n", $reply->value[2]->value);
+    $subscriber = exampleClient();
+    printf("[subscriber] subscribed, now watching %d channel(s)\n", $subscriber->subscribe('news'));
 
     while (true) { // @phpstan-ignore while.alwaysTrue
-        $message = exampleReceive($socket);
-        printf("[subscriber] %s on %s: %s\n", $message->value[0]->value, $message->value[1]->value, $message->value[2]->value);
+        $message = $subscriber->nextMessage(timeoutSeconds: 5.0);
+
+        if ($message !== null) {
+            printf("[subscriber] message on %s: %s\n", $message->channel, $message->payload);
+        }
     }
 }
 
 // Parent: give the child a moment to actually subscribe before publishing.
 usleep(200_000);
 
-$publisher = exampleConnect();
+$publisher = exampleClient();
 
 foreach (['first message', 'second message'] as $text) {
     printf("[publisher] PUBLISH news \"%s\"\n", $text);
-    $delivered = exampleCommand($publisher, ['PUBLISH', 'news', $text])->value;
-    printf("[publisher] -> delivered to %d subscriber(s)\n", $delivered);
+    printf("[publisher] -> delivered to %d subscriber(s)\n", $publisher->publish('news', $text));
     usleep(200_000);
 }
 
-fclose($publisher);
+$publisher->close();
 
 // Let the subscriber's last printf actually reach the terminal before it dies.
 usleep(200_000);

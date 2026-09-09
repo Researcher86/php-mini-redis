@@ -26,22 +26,25 @@ for ($i = 0; $i < SUBSCRIBERS; $i++) {
 
     if ($pid === -1) {
         fwrite(STDERR, "pcntl_fork() failed\n");
+
         exit(1);
     }
 
     if ($pid === 0) {
-        // Child: subscribe and drain everything that arrives until killed.
-        $socket = exampleConnect();
-        exampleCommand($socket, ['SUBSCRIBE', 'news']);
+        // Child: subscribe and drain everything that arrives until the
+        // publisher says it is done.
+        $subscriber = exampleClient(timeoutSeconds: 30.0);
+        $subscriber->subscribe('news');
 
-        while (true) {
-            $message = exampleReceive($socket);
-
-            if (isset($message->value[2]) && $message->value[2]->value === '__done__') {
-                fclose($socket);
-                exit(0);
+        while (($message = $subscriber->nextMessage()) !== null) {
+            if ($message->payload === '__done__') {
+                break;
             }
         }
+
+        $subscriber->close();
+
+        exit(0);
     }
 
     $subscriberPids[] = $pid;
@@ -50,12 +53,12 @@ for ($i = 0; $i < SUBSCRIBERS; $i++) {
 // Give every child a moment to actually subscribe before publishing.
 usleep(300_000);
 
-$publisher = exampleConnect();
+$publisher = exampleClient(timeoutSeconds: 30.0);
 
 $start = microtime(true);
 
 for ($i = 0; $i < MESSAGES; $i++) {
-    exampleCommand($publisher, ['PUBLISH', 'news', "msg-$i"]);
+    $publisher->publish('news', "msg-$i");
 }
 
 $totalDelivered = SUBSCRIBERS * MESSAGES;
@@ -66,15 +69,9 @@ printf("Messages:     %d\n", MESSAGES);
 printf("Fan-out total %d deliveries in %.3fs\n", $totalDelivered, $seconds);
 printf("Deliveries/s: %.0f\n", $totalDelivered / max($seconds, 1e-9));
 
-// Signal subscribers to exit, then reap them.
-exampleCommand($publisher, ['PUBLISH', 'news', '__done__']);
-fclose($publisher);
-
-usleep(200_000);
-
-foreach ($subscriberPids as $pid) {
-    posix_kill($pid, SIGTERM);
-}
+// Tell the subscribers to stop, then reap them.
+$publisher->publish('news', '__done__');
+$publisher->close();
 
 foreach ($subscriberPids as $pid) {
     pcntl_waitpid($pid, $status);
