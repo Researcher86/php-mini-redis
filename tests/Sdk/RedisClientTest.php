@@ -28,13 +28,6 @@ final class RedisClientTest extends TestCase
 
     protected function setUp(): void
     {
-        // Bound before the fork so the parent can read back the port the
-        // kernel picked; the child inherits the listening socket and is the
-        // only one that ever accepts on it.
-        $server = new RedisServer(new ServerConfig(host: self::HOST, port: 0));
-        [, $port] = explode(':', $server->localAddress());
-        $this->port = (int) $port;
-
         $pid = pcntl_fork();
         self::assertNotSame(-1, $pid, 'pcntl_fork() failed');
 

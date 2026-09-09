@@ -3,13 +3,18 @@
 
 declare(strict_types=1);
 
-use App\Protocol\RespEncoder;
-use App\Protocol\RespParser;
 use App\Protocol\RespType;
 use App\Protocol\RespValue;
+use App\Sdk\CommandFailedException;
+use App\Sdk\RedisClient;
+use App\Sdk\RedisClientException;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
+/**
+ * Turns a reply into the one line a terminal wants, which is the only part
+ * of this script that is not RedisClient doing the work.
+ */
 function describe(RespValue $value): string
 {
     return match ($value->type) {
@@ -22,42 +27,29 @@ function describe(RespValue $value): string
     };
 }
 
-$host = getenv('REDIS_HOST') ?: '127.0.0.1';
-$port = (int) (getenv('REDIS_PORT') ?: 6380);
-
 $arguments = array_slice($argv, 1); // @phpstan-ignore variable.undefined ($argv is always set for a CLI script)
 
 if ($arguments === []) {
     $arguments = ['PING'];
 }
 
-$socket = @stream_socket_client(sprintf('tcp://%s:%d', $host, $port), $errno, $errstr, 5);
+$client = new RedisClient(
+    getenv('REDIS_HOST') ?: '127.0.0.1',
+    (int) (getenv('REDIS_PORT') ?: 6380),
+);
 
-if ($socket === false) {
-    fwrite(STDERR, sprintf("Could not connect to %s:%d: %s (%d)\n", $host, $port, $errstr, $errno));
+try {
+    fwrite(STDOUT, describe($client->command(...$arguments)) . "\n");
+} catch (CommandFailedException $exception) {
+    // The server answered, and said no - reported the way redis-cli does,
+    // rather than as this script failing.
+    fwrite(STDOUT, 'ERROR: ' . $exception->error . "\n");
+
     exit(1);
+} catch (RedisClientException $exception) {
+    fwrite(STDERR, $exception->getMessage() . "\n");
+
+    exit(1);
+} finally {
+    $client->close();
 }
-
-$command = RespValue::array(array_map(RespValue::bulkString(...), $arguments));
-fwrite($socket, (new RespEncoder())->encode($command));
-
-$parser = new RespParser();
-$buffer = '';
-$parsed = null;
-
-while ($parsed === null) {
-    $chunk = fread($socket, 65536);
-
-    if ($chunk === false || $chunk === '') {
-        fwrite(STDERR, "Connection closed before a reply arrived.\n");
-        exit(1);
-    }
-
-    $buffer .= $chunk;
-    $parsed = $parser->parse($buffer);
-}
-
-[$value] = $parsed;
-
-fwrite(STDOUT, describe($value) . "\n");
-fclose($socket);

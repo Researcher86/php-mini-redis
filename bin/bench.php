@@ -3,9 +3,8 @@
 
 declare(strict_types=1);
 
-use App\Protocol\RespEncoder;
-use App\Protocol\RespParser;
-use App\Protocol\RespValue;
+use App\Sdk\RedisClient;
+use App\Sdk\RedisClientException;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
@@ -15,43 +14,36 @@ require dirname(__DIR__) . '/vendor/autoload.php';
  * request/reply round trips, each one timed. Writes its raw per-request
  * latencies to $resultFile as JSON, since a forked child cannot return a
  * value to the parent any other way.
+ *
+ * @param list<string> $command
  */
-function runBenchClient(string $host, int $port, string $payload, int $requests, string $resultFile): void
+function runBenchClient(string $host, int $port, array $command, int $requests, string $resultFile): void
 {
-    $socket = @stream_socket_client(sprintf('tcp://%s:%d', $host, $port), $errno, $errstr, 5);
-
-    if ($socket === false) {
-        fwrite(STDERR, sprintf("Client could not connect: %s (%d)\n", $errstr, $errno));
-        exit(1);
-    }
-
-    $parser = new RespParser();
+    $client = new RedisClient($host, $port);
     $latenciesMs = [];
 
-    for ($i = 0; $i < $requests; $i++) {
-        $start = microtime(true);
-        fwrite($socket, $payload);
-
-        $buffer = '';
-
-        while ($parser->parse($buffer) === null) {
-            $chunk = fread($socket, 65536);
-
-            if ($chunk === false || $chunk === '') {
-                break;
-            }
-
-            $buffer .= $chunk;
+    try {
+        for ($i = 0; $i < $requests; $i++) {
+            $start = microtime(true);
+            $client->command(...$command);
+            $latenciesMs[] = (microtime(true) - $start) * 1000;
         }
-
-        $latenciesMs[] = (microtime(true) - $start) * 1000;
+    } catch (RedisClientException $exception) {
+        fwrite(STDERR, sprintf("Client gave up after %d requests: %s\n", count($latenciesMs), $exception->getMessage()));
+    } finally {
+        $client->close();
     }
 
-    fclose($socket);
-    file_put_contents($resultFile, json_encode(['requests' => $requests, 'latenciesMs' => $latenciesMs]));
+    file_put_contents($resultFile, json_encode(['requests' => count($latenciesMs), 'latenciesMs' => $latenciesMs]));
 }
 
-/** @param list<float> $sortedLatenciesMs */
+/**
+ * The value at $p through the sorted samples - nearest-rank, so p50 of ten
+ * samples is a sample that was actually measured rather than an average of
+ * two. min() keeps p100 inside the array.
+ *
+ * @param list<float> $sortedLatenciesMs
+ */
 function percentile(array $sortedLatenciesMs, float $p): float
 {
     $count = count($sortedLatenciesMs);
@@ -71,22 +63,26 @@ $host = (string) ($options['host'] ?? (getenv('REDIS_HOST') ?: '127.0.0.1'));
 $port = (int) ($options['port'] ?? (getenv('REDIS_PORT') ?: 6380));
 
 $command = match ($commandName) {
-    'PING' => RespValue::array([RespValue::bulkString('PING')]),
-    'SET' => RespValue::array([RespValue::bulkString('SET'), RespValue::bulkString('bench:key'), RespValue::bulkString('value')]),
-    'GET' => RespValue::array([RespValue::bulkString('GET'), RespValue::bulkString('bench:key')]),
-    'INCR' => RespValue::array([RespValue::bulkString('INCR'), RespValue::bulkString('bench:counter')]),
+    'PING' => ['PING'],
+    'SET' => ['SET', 'bench:key', 'value'],
+    'GET' => ['GET', 'bench:key'],
+    'INCR' => ['INCR', 'bench:counter'],
     default => null,
 };
 
 if ($command === null) {
     fwrite(STDERR, sprintf("Unknown --command=%s (use PING, SET, GET or INCR)\n", $commandName));
+
     exit(1);
 }
 
-$payload = (new RespEncoder())->encode($command);
-
 $resultsDir = sys_get_temp_dir() . '/mini-redis-bench-' . getmypid();
-mkdir($resultsDir);
+
+if (!mkdir($resultsDir) && !is_dir($resultsDir)) {
+    fwrite(STDERR, sprintf("Could not create %s\n", $resultsDir));
+
+    exit(1);
+}
 
 $start = microtime(true);
 $pids = [];
@@ -96,11 +92,13 @@ for ($i = 0; $i < $clients; $i++) {
 
     if ($pid === -1) {
         fwrite(STDERR, "pcntl_fork() failed\n");
+
         exit(1);
     }
 
     if ($pid === 0) {
-        runBenchClient($host, $port, $payload, $requestsPerClient, $resultsDir . '/' . getmypid() . '.json');
+        runBenchClient($host, $port, $command, $requestsPerClient, $resultsDir . '/' . getmypid() . '.json');
+
         exit(0);
     }
 

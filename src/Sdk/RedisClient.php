@@ -287,6 +287,24 @@ final class RedisClient
         return $replies;
     }
 
+    /**
+     * Writes a command and does not wait for its reply - which is what a
+     * client falling behind looks like from the server's side, and the only
+     * way to demonstrate backpressure (examples/slow-client.php) or to fill
+     * a connection deliberately.
+     *
+     * Every reply still arrives eventually and stays queued on this
+     * connection, so a client that mixes this with ordinary commands will
+     * read the earlier replies as answers to the later ones. Use it on a
+     * connection doing nothing else.
+     *
+     * @throws RedisClientException
+     */
+    public function sendWithoutReading(string $name, string ...$arguments): void
+    {
+        $this->writeCommand($name, ...$arguments);
+    }
+
     public function close(): void
     {
         if (is_resource($this->socket)) {
