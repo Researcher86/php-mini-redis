@@ -1181,6 +1181,57 @@ being processed while response bytes are still queued.
 
 ---
 
+# Phase 33 — Expiration Heap
+
+## Goal
+
+Phase 17's active-expiration sweep walked *every* key on each interval to
+find the ones whose TTL had passed - O(N) per sweep even when almost
+nothing was due. A store holding hundreds of thousands of long-lived keys
+paid that cost unconditionally on every tick. Track the due keys in a
+min-heap instead, so a sweep only touches the entries that are actually
+due.
+
+## Tasks
+
+* [x] `InMemoryStore` keeps an `SplMinHeap` of `[expiresAt, version, key]`,
+      so the earliest-due entry is always at the top
+* [x] `set()` with a TTL pushes the key; `set()` without a TTL does not
+* [x] Every `set()`/`delete()` bumps a per-key version; `sweepExpired()`
+      pops heap entries and only removes a key if it is still at the same
+      version and `expiresAt` it was queued at - so an overwritten key is
+      never killed by its old TTL, and a deleted key's stale heap entry is
+      skipped rather than resurrecting it
+* [x] `sweepExpired()` stops at the first non-due entry, leaving the whole
+      scan O(due) instead of O(all keys)
+* [x] Lazy expiration in `entryOrNull()` stays untouched; a key removed
+      lazily leaves a stale heap entry that the version/`expiresAt` check
+      safely skips on the next sweep
+* [x] `restore()` rebuilds both the data map and the heap, and finally
+      implements the documented-but-missing rule that entries already
+      expired at restore time are dropped (the review's "variant B" doc
+      fix)
+
+## Definition of Done
+
+Sweeping is proportional to how much is actually expired, not to how much
+is stored; the behavior of every expiration path (sweep, lazy, overwrite,
+delete, restore) is identical to before and pinned by tests.
+
+## Tests
+
+* `InMemoryStoreTest::testSweepExpiredRemovesOnlyExpiredEntriesAndReportsHowMany`
+  (Phase 17) - unchanged
+* `InMemoryStoreTest::testOverwritingAnExpiringKeyDoesNotLetItsOldTtlKillTheNewValue`
+  - a key overwritten without a TTL survives its old due time and is not
+  swept
+* `InMemoryStoreTest::testSweepSkipsAStaleHeapEntryAfterTheKeyWasDeleted`
+  - deleting a key leaves its heap entry inert
+* `InMemoryStoreTest::testRestoreDropsEntriesAlreadyExpiredAtRestoreTime`
+  - restore applies the documented expired-filter
+
+---
+
 # Final Principle
 
 Do not optimize for:

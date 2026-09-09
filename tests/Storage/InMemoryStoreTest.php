@@ -159,4 +159,45 @@ final class InMemoryStoreTest extends TestCase
         self::assertFalse($store->has('stale'));
         self::assertSame('value', $store->get('fresh'));
     }
+
+    public function testOverwritingAnExpiringKeyDoesNotLetItsOldTtlKillTheNewValue(): void
+    {
+        $clock = new FakeClock(1000.0);
+        $store = new InMemoryStore($clock);
+
+        $store->set('session', 'first', ttlSeconds: 10);
+        $store->set('session', 'second'); // overwrite, no TTL - the old heap entry must go stale
+        $clock->advance(10);
+
+        self::assertSame('second', $store->get('session'));
+        self::assertSame(0, $store->sweepExpired());
+        self::assertSame('second', $store->get('session'));
+    }
+
+    public function testSweepSkipsAStaleHeapEntryAfterTheKeyWasDeleted(): void
+    {
+        $clock = new FakeClock(1000.0);
+        $store = new InMemoryStore($clock);
+
+        $store->set('gone', 'value', ttlSeconds: 10);
+        $store->delete('gone');
+        $clock->advance(10);
+
+        self::assertSame(0, $store->sweepExpired());
+    }
+
+    public function testRestoreDropsEntriesAlreadyExpiredAtRestoreTime(): void
+    {
+        $clock = new FakeClock(1000.0);
+        $store = new InMemoryStore($clock);
+
+        $store->restore([
+            'dead' => ['value' => 'x', 'expiresAt' => 1000.0],
+            'alive' => ['value' => 'y', 'expiresAt' => 2000.0],
+        ]);
+
+        self::assertFalse($store->has('dead'));
+        self::assertSame('y', $store->get('alive'));
+        self::assertSame(0, $store->sweepExpired());
+    }
 }
