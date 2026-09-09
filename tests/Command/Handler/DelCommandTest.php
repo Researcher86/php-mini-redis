@@ -8,10 +8,13 @@ use App\Command\Command;
 use App\Command\Handler\DelCommand;
 use App\Protocol\RespValue;
 use App\Storage\InMemoryStore;
+use App\Tests\Support\CreatesTestConnections;
 use PHPUnit\Framework\TestCase;
 
 final class DelCommandTest extends TestCase
 {
+    use CreatesTestConnections;
+
     public function testDeletesExistingKeysAndCountsThem(): void
     {
         $store = new InMemoryStore();
@@ -24,7 +27,7 @@ final class DelCommandTest extends TestCase
             RespValue::bulkString('missing'),
         ]));
 
-        $result = (new DelCommand())->handle($command, $store);
+        $result = (new DelCommand())->handle($command, $store, $this->createConnection());
 
         self::assertSame(2, $result->value);
         self::assertFalse($store->has('a'));
@@ -35,7 +38,7 @@ final class DelCommandTest extends TestCase
     {
         $command = Command::fromRespValue(RespValue::array([RespValue::bulkString('DEL')]));
 
-        $result = (new DelCommand())->handle($command, new InMemoryStore());
+        $result = (new DelCommand())->handle($command, new InMemoryStore(), $this->createConnection());
 
         self::assertSame(\App\Protocol\RespType::Error, $result->type);
     }

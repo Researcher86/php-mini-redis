@@ -7,25 +7,29 @@ namespace App\Tests\Command;
 use App\Command\Command;
 use App\Command\CommandDispatcher;
 use App\Command\CommandHandler;
+use App\Connection\ClientConnection;
 use App\Protocol\RespType;
 use App\Protocol\RespValue;
 use App\Storage\InMemoryStore;
 use App\Storage\Store;
+use App\Tests\Support\CreatesTestConnections;
 use PHPUnit\Framework\TestCase;
 
 final class CommandDispatcherTest extends TestCase
 {
+    use CreatesTestConnections;
+
     public function testRoutesACommandToItsRegisteredHandler(): void
     {
         $dispatcher = new CommandDispatcher();
         $dispatcher->register('PING', new class implements CommandHandler {
-            public function handle(Command $command, Store $store): RespValue
+            public function handle(Command $command, Store $store, ClientConnection $connection): RespValue
             {
                 return RespValue::simpleString('PONG');
             }
         });
 
-        $result = $dispatcher->dispatch($this->command('PING'), new InMemoryStore());
+        $result = $dispatcher->dispatch($this->command('PING'), new InMemoryStore(), $this->createConnection());
 
         self::assertSame('PONG', $result->value);
     }
@@ -34,13 +38,13 @@ final class CommandDispatcherTest extends TestCase
     {
         $dispatcher = new CommandDispatcher();
         $dispatcher->register('ping', new class implements CommandHandler {
-            public function handle(Command $command, Store $store): RespValue
+            public function handle(Command $command, Store $store, ClientConnection $connection): RespValue
             {
                 return RespValue::simpleString('PONG');
             }
         });
 
-        $result = $dispatcher->dispatch($this->command('PING'), new InMemoryStore());
+        $result = $dispatcher->dispatch($this->command('PING'), new InMemoryStore(), $this->createConnection());
 
         self::assertSame('PONG', $result->value);
     }
@@ -49,7 +53,7 @@ final class CommandDispatcherTest extends TestCase
     {
         $dispatcher = new CommandDispatcher();
 
-        $result = $dispatcher->dispatch($this->command('UNKNOWN'), new InMemoryStore());
+        $result = $dispatcher->dispatch($this->command('UNKNOWN'), new InMemoryStore(), $this->createConnection());
 
         self::assertSame(RespType::Error, $result->type);
     }
@@ -58,9 +62,10 @@ final class CommandDispatcherTest extends TestCase
     {
         $dispatcher = CommandDispatcher::withDefaultHandlers();
         $store = new InMemoryStore();
+        $connection = $this->createConnection();
 
-        $dispatcher->dispatch($this->command('SET', ['foo', 'bar']), $store);
-        $get = $dispatcher->dispatch($this->command('GET', ['foo']), $store);
+        $dispatcher->dispatch($this->command('SET', ['foo', 'bar']), $store, $connection);
+        $get = $dispatcher->dispatch($this->command('GET', ['foo']), $store, $connection);
 
         self::assertSame('bar', $get->value);
     }

@@ -10,6 +10,7 @@ use App\Command\Handler\GetCommand;
 use App\Command\Handler\IncrCommand;
 use App\Command\Handler\PingCommand;
 use App\Command\Handler\SetCommand;
+use App\Connection\ClientConnection;
 use App\Protocol\RespValue;
 use App\Storage\Store;
 
@@ -26,7 +27,7 @@ final class CommandDispatcher
         $this->handlers[strtoupper($name)] = $handler;
     }
 
-    public function dispatch(Command $command, Store $store): RespValue
+    public function dispatch(Command $command, Store $store, ClientConnection $connection): RespValue
     {
         $handler = $this->handlers[$command->name] ?? null;
 
@@ -34,7 +35,7 @@ final class CommandDispatcher
             return RespValue::error(sprintf("ERR unknown command '%s'", strtolower($command->name)));
         }
 
-        return $handler->handle($command, $store);
+        return $handler->handle($command, $store, $connection);
     }
 
     public static function withDefaultHandlers(): self

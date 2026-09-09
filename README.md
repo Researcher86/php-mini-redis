@@ -1374,9 +1374,9 @@ The project is implemented incrementally.
 
 ## Phase 9 — Pub/Sub
 
-- [ ] Channels
-- [ ] Subscribers
-- [ ] Message Delivery
+- [x] Channels
+- [x] Subscribers
+- [x] Message Delivery
 
 ---
 

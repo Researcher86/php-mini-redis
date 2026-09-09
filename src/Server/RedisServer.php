@@ -7,6 +7,8 @@ namespace App\Server;
 use App\Command\Command;
 use App\Command\CommandDispatcher;
 use App\Command\CommandException;
+use App\Command\Handler\PublishCommand;
+use App\Command\Handler\SubscribeCommand;
 use App\Connection\ClientConnection;
 use App\Connection\ConnectionManager;
 use App\Connection\ConnectionState;
@@ -16,6 +18,7 @@ use App\Protocol\ProtocolException;
 use App\Protocol\RespEncoder;
 use App\Protocol\RespStreamReader;
 use App\Protocol\RespValue;
+use App\PubSub\ChannelRegistry;
 use App\Storage\InMemoryStore;
 use App\Storage\Store;
 
@@ -40,6 +43,7 @@ final class RedisServer
     private RespEncoder $encoder;
     private float $expirationSweepIntervalSeconds;
     private ?float $idleTimeoutSeconds;
+    private ChannelRegistry $channels;
 
     public function __construct(
         ServerConfig $config,
@@ -58,6 +62,19 @@ final class RedisServer
         $this->encoder = new RespEncoder();
         $this->expirationSweepIntervalSeconds = $expirationSweepIntervalSeconds;
         $this->idleTimeoutSeconds = $idleTimeoutSeconds;
+
+        // Pub/Sub needs access to connections beyond the one issuing the
+        // command (PUBLISH writes to every subscriber), which plain
+        // CommandHandlers don't otherwise have a way to do.
+        $this->channels = new ChannelRegistry();
+        $this->dispatcher->register('SUBSCRIBE', new SubscribeCommand($this->channels));
+        $this->dispatcher->register('PUBLISH', new PublishCommand(
+            $this->channels,
+            function (ClientConnection $subscriber, string $payload): void {
+                $subscriber->appendToWriteBuffer($payload);
+                $this->flushWriteBuffer($subscriber);
+            },
+        ));
 
         // Active expiration: expired keys are also removed on a timer,
         // instead of only being noticed lazily the next time they are read.
@@ -191,7 +208,7 @@ final class RedisServer
 
         try {
             $command = Command::fromRespValue($value);
-            $result = $this->dispatcher->dispatch($command, $this->store);
+            $result = $this->dispatcher->dispatch($command, $this->store, $connection);
         } catch (CommandException $exception) {
             $result = RespValue::error('ERR ' . $exception->getMessage());
         }
@@ -258,6 +275,7 @@ final class RedisServer
         $this->eventLoop->removeReadable($connection->socket());
         $this->eventLoop->removeWritable($connection->socket());
         $this->connections->remove($connection);
+        $this->channels->unsubscribeAll($connection);
         $connection->close();
     }
 }

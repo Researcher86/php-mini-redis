@@ -8,10 +8,13 @@ use App\Command\Command;
 use App\Command\Handler\GetCommand;
 use App\Protocol\RespValue;
 use App\Storage\InMemoryStore;
+use App\Tests\Support\CreatesTestConnections;
 use PHPUnit\Framework\TestCase;
 
 final class GetCommandTest extends TestCase
 {
+    use CreatesTestConnections;
+
     public function testReturnsTheStoredValue(): void
     {
         $store = new InMemoryStore();
@@ -21,7 +24,7 @@ final class GetCommandTest extends TestCase
             RespValue::bulkString('name'),
         ]));
 
-        $result = (new GetCommand())->handle($command, $store);
+        $result = (new GetCommand())->handle($command, $store, $this->createConnection());
 
         self::assertSame('Tanat', $result->value);
     }
@@ -33,7 +36,7 @@ final class GetCommandTest extends TestCase
             RespValue::bulkString('missing'),
         ]));
 
-        $result = (new GetCommand())->handle($command, new InMemoryStore());
+        $result = (new GetCommand())->handle($command, new InMemoryStore(), $this->createConnection());
 
         self::assertNull($result->value);
     }
@@ -42,7 +45,7 @@ final class GetCommandTest extends TestCase
     {
         $command = Command::fromRespValue(RespValue::array([RespValue::bulkString('GET')]));
 
-        $result = (new GetCommand())->handle($command, new InMemoryStore());
+        $result = (new GetCommand())->handle($command, new InMemoryStore(), $this->createConnection());
 
         self::assertSame(\App\Protocol\RespType::Error, $result->type);
     }

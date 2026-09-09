@@ -8,15 +8,18 @@ use App\Command\Command;
 use App\Command\Handler\PingCommand;
 use App\Protocol\RespValue;
 use App\Storage\InMemoryStore;
+use App\Tests\Support\CreatesTestConnections;
 use PHPUnit\Framework\TestCase;
 
 final class PingCommandTest extends TestCase
 {
+    use CreatesTestConnections;
+
     public function testRepliesWithPongWhenGivenNoArgument(): void
     {
         $command = Command::fromRespValue(RespValue::array([RespValue::bulkString('PING')]));
 
-        $result = (new PingCommand())->handle($command, new InMemoryStore());
+        $result = (new PingCommand())->handle($command, new InMemoryStore(), $this->createConnection());
 
         self::assertSame('PONG', $result->value);
     }
@@ -28,7 +31,7 @@ final class PingCommandTest extends TestCase
             RespValue::bulkString('hello'),
         ]));
 
-        $result = (new PingCommand())->handle($command, new InMemoryStore());
+        $result = (new PingCommand())->handle($command, new InMemoryStore(), $this->createConnection());
 
         self::assertSame('hello', $result->value);
     }

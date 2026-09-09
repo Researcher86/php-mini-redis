@@ -8,10 +8,13 @@ use App\Command\Command;
 use App\Command\Handler\ExistsCommand;
 use App\Protocol\RespValue;
 use App\Storage\InMemoryStore;
+use App\Tests\Support\CreatesTestConnections;
 use PHPUnit\Framework\TestCase;
 
 final class ExistsCommandTest extends TestCase
 {
+    use CreatesTestConnections;
+
     public function testCountsExistingKeysAmongTheArguments(): void
     {
         $store = new InMemoryStore();
@@ -23,7 +26,7 @@ final class ExistsCommandTest extends TestCase
             RespValue::bulkString('missing'),
         ]));
 
-        $result = (new ExistsCommand())->handle($command, $store);
+        $result = (new ExistsCommand())->handle($command, $store, $this->createConnection());
 
         self::assertSame(2, $result->value);
     }
@@ -32,7 +35,7 @@ final class ExistsCommandTest extends TestCase
     {
         $command = Command::fromRespValue(RespValue::array([RespValue::bulkString('EXISTS')]));
 
-        $result = (new ExistsCommand())->handle($command, new InMemoryStore());
+        $result = (new ExistsCommand())->handle($command, new InMemoryStore(), $this->createConnection());
 
         self::assertSame(\App\Protocol\RespType::Error, $result->type);
     }

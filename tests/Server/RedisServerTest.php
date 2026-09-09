@@ -353,6 +353,69 @@ final class RedisServerTest extends TestCase
         }
     }
 
+    public function testASubscriberReceivesAPublishedMessage(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), $loop);
+
+        try {
+            $subscriberClient = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($subscriberClient, $errstr);
+            $server->acceptClient(5);
+
+            fwrite($subscriberClient, "*2\r\n\$9\r\nSUBSCRIBE\r\n\$4\r\nnews\r\n");
+            $loop->tick(1);
+            self::assertSame("*3\r\n\$9\r\nsubscribe\r\n\$4\r\nnews\r\n:1\r\n", fread($subscriberClient, 1024));
+
+            $publisherClient = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($publisherClient, $errstr);
+            $server->acceptClient(5);
+
+            fwrite($publisherClient, "*3\r\n\$7\r\nPUBLISH\r\n\$4\r\nnews\r\n\$5\r\nhello\r\n");
+            $loop->tick(1);
+
+            self::assertSame(':1' . "\r\n", fread($publisherClient, 1024));
+            self::assertSame("*3\r\n\$7\r\nmessage\r\n\$4\r\nnews\r\n\$5\r\nhello\r\n", fread($subscriberClient, 1024));
+
+            fclose($subscriberClient);
+            fclose($publisherClient);
+        } finally {
+            $server->stop();
+        }
+    }
+
+    public function testDisconnectingASubscriberRemovesItFromItsChannels(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), $loop);
+
+        try {
+            $subscriberClient = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($subscriberClient, $errstr);
+            $server->acceptClient(5);
+
+            fwrite($subscriberClient, "*2\r\n\$9\r\nSUBSCRIBE\r\n\$4\r\nnews\r\n");
+            $loop->tick(1);
+            fread($subscriberClient, 1024);
+
+            fclose($subscriberClient);
+            $loop->tick(1);
+
+            $publisherClient = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($publisherClient, $errstr);
+            $server->acceptClient(5);
+
+            fwrite($publisherClient, "*3\r\n\$7\r\nPUBLISH\r\n\$4\r\nnews\r\n\$5\r\nhello\r\n");
+            $loop->tick(1);
+
+            self::assertSame(':0' . "\r\n", fread($publisherClient, 1024));
+
+            fclose($publisherClient);
+        } finally {
+            $server->stop();
+        }
+    }
+
     public function testAPartialWriteIsQueuedInTheWriteBufferInsteadOfBlocking(): void
     {
         $loop = new SelectLoop();
