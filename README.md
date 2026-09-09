@@ -83,6 +83,7 @@ than a capability the server is missing.
 | **[docs/DECISIONS.md](docs/DECISIONS.md)** | why the code is shaped this way: what was tried, what was rejected, which ordering problems forced a change |
 | **[docs/FAILURE-MODEL.md](docs/FAILURE-MODEL.md)** | what breaks, what survives it, and what this server does *not* guarantee - read before trusting it with anything |
 | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | the mental model of how the pieces talk to each other, traced through a request |
+| **[docs/BENCHMARKS.md](docs/BENCHMARKS.md)** | measured throughput and latency, where it scales and where it flattens |
 | the rest of this file | the concepts, in depth |
 
 ---

@@ -1,5 +1,5 @@
 .PHONY: up down shell build install test analyse \
-        run-server run-server-debug run-client run-client-debug
+        run-server run-server-debug run-client run-client-debug bench
 
 up:
 	docker compose up -d
@@ -29,9 +29,9 @@ run-server: up
 	docker compose exec php php bin/server.php
 
 # The image ships xdebug with start_with_request=trigger, so nothing reaches
-# for a debugger unless asked - which matters here, where one run is a master
-# plus N forked workers. These targets are the ask; point your IDE at port
-# 9003 first, or the connection attempt just times out and the run continues.
+# for a debugger unless asked. These targets are the ask; point your IDE at
+# port 9003 first, or the connection attempt just times out and the run
+# continues.
 
 run-server-debug: up
 	docker compose exec php bash -c "XDEBUG_TRIGGER=1 php bin/server.php"
@@ -41,3 +41,7 @@ run-client: up
 
 run-client-debug: up
 	docker compose exec php bash -c "XDEBUG_TRIGGER=1 php bin/client.php $(ARGS)"
+
+# Requires a server already running (make run-server, in another terminal).
+bench: up
+	docker compose exec php php bin/bench.php $(ARGS)

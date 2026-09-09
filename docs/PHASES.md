@@ -99,7 +99,7 @@ one test answers for one line of the plan. The whole suite runs with
 - [x] Phase 26 — Backpressure
 - [x] Phase 27 — Metrics
 - [x] Phase 28 — Tests
-- [ ] Phase 29 — Benchmarks
+- [x] Phase 29 — Benchmarks
 - [ ] Phase 30 — Experiments
 
 ---
@@ -1015,9 +1015,26 @@ Measure the server rather than guessing: requests/second, latency
 
 ## Tasks
 
-* [ ] A benchmark script (`bin/bench.php` or `redis-benchmark` against it,
-      since the protocol is RESP-compatible for the commands implemented)
-* [ ] Record results in `docs/BENCHMARKS.md`
+* [x] `bin/bench.php`: forks `--clients` real child processes
+      (`pcntl_fork()`), each running `--requests` synchronous
+      request/reply round trips against its own connection, aggregating
+      every latency sample once every child exits
+* [x] `make bench ARGS="--clients=N --requests=M --command=PING"`
+* [x] Results recorded in [docs/BENCHMARKS.md](BENCHMARKS.md), measured
+      inside this project's own container - not fabricated numbers
+
+## Definition of Done
+
+Real, reproducible throughput and latency numbers exist for `PING`, `SET`,
+`GET` and `INCR` at more than one concurrency level, with an honest
+account of what they do and do not show (see BENCHMARKS.md's own "What
+this does not measure").
+
+## Tests
+
+None of its own - `bin/bench.php` is a measurement tool exercised by
+running it, the same way `bin/client.php` is; both are covered
+functionally by `RedisServerTest`'s exercise of the same protocol paths.
 
 ---
 
