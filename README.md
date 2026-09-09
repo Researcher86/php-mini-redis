@@ -1356,9 +1356,9 @@ The project is implemented incrementally.
 
 ## Phase 6 — Storage
 
-- [ ] In-Memory Storage
-- [ ] Keys
-- [ ] Values
+- [x] In-Memory Storage
+- [x] Keys
+- [x] Values
 
 ## Phase 7 — TTL
 

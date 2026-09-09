@@ -71,7 +71,7 @@ The project should remain:
 - [x] Phase 6 — Redis Protocol
 - [x] Phase 7 — RESP Parser
 - [x] Phase 8 — Command Model
-- [ ] Phase 9 — In-Memory Store
+- [x] Phase 9 — In-Memory Store
 - [ ] Phase 10 — Basic Commands
 - [ ] Phase 11 — Command Dispatcher
 - [ ] Phase 12 — Response Encoder
