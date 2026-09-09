@@ -677,6 +677,37 @@ final class RedisServerTest extends TestCase
         fclose($clientB);
     }
 
+    public function testShutdownClosingConnectionsMidPassDoesNotCrashTheLoop(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(
+            new ServerConfig(host: '127.0.0.1', port: 0),
+            $loop,
+            shutdownGraceSeconds: 0.0,
+        );
+
+        $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+        self::assertIsResource($client, $errstr);
+        self::assertInstanceOf(ClientConnection::class, $server->acceptClient(5));
+
+        // The grace period is already over when the shutdown checker fires,
+        // so it closes every connection from inside the same pass that has
+        // just selected this client's socket as readable. Dispatching that
+        // now-closed socket to its read listener used to be a TypeError -
+        // i.e. a graceful shutdown killed the process whenever a client was
+        // mid-command.
+        $server->requestShutdown();
+        usleep(30_000);
+        fwrite($client, "*1\r\n\$4\r\nPING\r\n");
+        usleep(10_000);
+
+        $loop->tick(1);
+
+        self::assertSame(0, $server->connectedClientCount());
+
+        fclose($client);
+    }
+
     public function testRequestShutdownIsIdempotent(): void
     {
         $loop = new SelectLoop();

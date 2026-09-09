@@ -85,6 +85,8 @@ final class SelectLoop implements EventLoop
      */
     public function tick(?float $timeoutSeconds): int
     {
+        $this->forgetClosedStreams();
+
         $read = array_map(static fn (array $entry) => $entry[0], $this->readListeners);
         $write = array_map(static fn (array $entry) => $entry[0], $this->writeListeners);
 
@@ -121,7 +123,12 @@ final class SelectLoop implements EventLoop
         foreach ($read as $stream) {
             $id = get_resource_id($stream);
 
-            if (isset($this->readListeners[$id])) {
+            // is_resource() as well as the listener check: an earlier
+            // callback in this very loop may have closed this stream (a
+            // PUBLISH that drops a broken subscriber, a shutdown that
+            // closes every connection at once), and handing a closed
+            // stream to a listener is a TypeError, not a warning.
+            if (is_resource($stream) && isset($this->readListeners[$id])) {
                 ($this->readListeners[$id][1])($stream);
             }
         }
@@ -129,7 +136,7 @@ final class SelectLoop implements EventLoop
         foreach ($write as $stream) {
             $id = get_resource_id($stream);
 
-            if (isset($this->writeListeners[$id])) {
+            if (is_resource($stream) && isset($this->writeListeners[$id])) {
                 ($this->writeListeners[$id][1])($stream);
             }
         }
@@ -138,6 +145,33 @@ final class SelectLoop implements EventLoop
         $this->metrics->recordIteration($busySeconds, $idleSeconds);
 
         return $ready;
+    }
+
+    /**
+     * Drops streams that were closed by whoever owns them, before
+     * stream_select() is handed one and raises a TypeError that takes the
+     * whole process down.
+     *
+     * The loop does not own what it watches: RedisServer closes every
+     * connection at once on shutdown, a connection is dropped from inside
+     * a listener, a test closes a socket it made itself. Requiring each of
+     * them to deregister first - on every path, including the ones that
+     * throw - is a coupling the loop does not need: a closed stream is
+     * never going to be ready again, so forgetting it is always right.
+     */
+    private function forgetClosedStreams(): void
+    {
+        foreach ($this->readListeners as $id => [$stream]) {
+            if (!is_resource($stream)) {
+                unset($this->readListeners[$id]);
+            }
+        }
+
+        foreach ($this->writeListeners as $id => [$stream]) {
+            if (!is_resource($stream)) {
+                unset($this->writeListeners[$id]);
+            }
+        }
     }
 
     private function shorterWait(?float $a, ?float $b): ?float

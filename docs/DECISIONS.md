@@ -160,6 +160,33 @@ buy tighter precision at the cost of one more constructor parameter and one
 more thing to explain, for a project whose point is the mechanism ("time
 becomes a first-class event loop event"), not exact SLA-grade timing.
 
+## The loop forgets closed streams instead of trusting owners to deregister
+
+`SelectLoop` does not own the sockets it watches, and their owners close
+them at moments the loop cannot observe. A closed stream is not a warning
+in PHP 8 - `stream_select()` and `fread()` both raise a `TypeError` on
+one, which `@` does not suppress - so a single stale entry takes the whole
+process down.
+
+That was not hypothetical: a graceful shutdown whose grace period expired
+while a client was mid-command closed every connection from inside the
+shutdown timer, which fires *after* `stream_select()` has already picked
+that client's socket as readable in the very same pass. Dispatching it
+then handed a just-closed socket to its read listener - a `TypeError`,
+i.e. `SIGTERM` killed the server outright exactly when it was supposed to
+be shutting down cleanly. That path is pinned by
+`RedisServerTest::testShutdownClosingConnectionsMidPassDoesNotCrashTheLoop`.
+
+Two guards, because the stream can go away at two different moments:
+`tick()` drops closed streams from both listener maps before building the
+`stream_select()` arrays, and the dispatch loops re-check `is_resource()`
+per stream, since an earlier callback in the same pass may close a later
+one's socket (a shutdown, a `PUBLISH` dropping a broken subscriber). The
+alternative - requiring every owner to deregister before closing, on every
+path including the ones that throw - is a coupling the loop does not need:
+a closed stream is never going to be ready again, so forgetting it is
+always right.
+
 ## `docker-compose.yml`'s stale `container_name`
 
 The compose file's `container_name` still read `php-worker-pool` - copied,

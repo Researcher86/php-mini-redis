@@ -164,6 +164,49 @@ final class SelectLoopTest extends TestCase
         self::assertTrue($timerFired);
     }
 
+    public function testAStreamClosedBehindTheLoopIsForgottenInsteadOfSelectedOn(): void
+    {
+        [$a, $b] = $this->pairOfSockets();
+        $loop = new SelectLoop();
+
+        $loop->onReadable($a, function (): void {
+            self::fail('Should not be called: the stream was closed.');
+        });
+        $loop->onWritable($a, function (): void {
+            self::fail('Should not be called: the stream was closed.');
+        });
+
+        // Closed by its owner without deregistering - stream_select() would
+        // raise a TypeError on it, taking the whole process down.
+        fclose($a);
+
+        self::assertSame(0, $loop->tick(0.01));
+    }
+
+    public function testAStreamClosedByAnEarlierCallbackIsNotDispatchedInTheSamePass(): void
+    {
+        [$a, $aPeer] = $this->pairOfSockets();
+        [$b, $bPeer] = $this->pairOfSockets();
+        $loop = new SelectLoop();
+
+        // Both are readable in the same pass, and the first callback closes
+        // the second's stream - the way a shutdown, or a PUBLISH dropping a
+        // broken subscriber, closes connections other than the one being
+        // serviced.
+        $loop->onReadable($a, function ($stream) use ($b): void {
+            fread($stream, 1024);
+            fclose($b);
+        });
+        $loop->onReadable($b, function (): void {
+            self::fail('Should not be called: the stream was closed mid-pass.');
+        });
+
+        fwrite($aPeer, 'PING');
+        fwrite($bPeer, 'PING');
+
+        self::assertSame(2, $loop->tick(1));
+    }
+
     /**
      * @return array{0: resource, 1: resource}
      */
