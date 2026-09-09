@@ -98,7 +98,7 @@ one test answers for one line of the plan. The whole suite runs with
 - [x] Phase 25 — Limits
 - [x] Phase 26 — Backpressure
 - [x] Phase 27 — Metrics
-- [ ] Phase 28 — Tests
+- [x] Phase 28 — Tests
 - [ ] Phase 29 — Benchmarks
 - [ ] Phase 30 — Experiments
 
@@ -976,13 +976,33 @@ real server), and failure scenarios.
 
 ## Status
 
-Largely already true as a consequence of how phases 1-21 were built rather
+Largely already true as a consequence of how phases 0-27 were built rather
 than a separate pass: every phase above already has both handler-level unit
-tests and `RedisServerTest` integration tests over a real socket. What
-remains here specifically: an explicit pass over failure scenarios not yet
-covered (large responses beyond the write-buffer test's own scope,
-connection timeout combined with pub/sub, and whatever Phase 25's limits
-introduce).
+tests and `RedisServerTest` integration tests over a real socket, and each
+of the plan's own named failure scenarios already has coverage somewhere -
+partial requests (Phase 5/7), invalid RESP (Phase 24), unknown commands
+(Phase 11), a slow/absent reader (Phase 26), a large response (Phase 13),
+an expired key (Phase 16/17), a connection timeout (Phase 19).
+
+What this phase actually added: the one *combination* those per-phase
+tests never exercised together - a subscriber that goes idle. Each
+mechanism (Phase 19's timeout, Phase 20's Pub/Sub) was tested on its own,
+but nothing confirmed an idle-timeout disconnect cleans up a subscription
+the same way a client-initiated one does.
+
+## Definition of Done
+
+`make test` and `make analyse` both pass, and every failure scenario the
+plan names has a test that exercises it specifically, including the one
+combination above that no single phase's own tests would have caught.
+
+## Tests
+
+- [tests/Server/RedisServerTest.php](../tests/Server/RedisServerTest.php) -
+  `testAnIdleTimedOutSubscriberIsUnsubscribedFromItsChannels`: a subscriber
+  goes silent past the idle timeout, and a subsequent `PUBLISH` to its
+  channel reaches zero recipients, the same as a clean disconnect would
+  produce.
 
 ---
 

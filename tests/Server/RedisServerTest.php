@@ -883,4 +883,50 @@ final class RedisServerTest extends TestCase
             $server->stop();
         }
     }
+
+    /**
+     * A gap between two otherwise well-tested phases: Phase 19's idle
+     * timeout and Phase 20's Pub/Sub each have their own coverage, but
+     * nothing combined them - does an idle-timeout disconnect clean up a
+     * subscription the same way a client-initiated disconnect does?
+     */
+    public function testAnIdleTimedOutSubscriberIsUnsubscribedFromItsChannels(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(
+            new ServerConfig(host: '127.0.0.1', port: 0),
+            $loop,
+            idleTimeoutSeconds: 0.2,
+        );
+
+        try {
+            $subscriberClient = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($subscriberClient, $errstr);
+            $subscriberConnection = $server->acceptClient(5);
+            self::assertInstanceOf(ClientConnection::class, $subscriberConnection);
+
+            fwrite($subscriberClient, "*2\r\n\$9\r\nSUBSCRIBE\r\n\$4\r\nnews\r\n");
+            $loop->tick(1);
+            fread($subscriberClient, 1024);
+
+            // Silence until the idle timeout fires and closes it.
+            usleep(400_000);
+            $loop->tick(0.5);
+            self::assertSame(ConnectionState::Closed, $subscriberConnection->state());
+
+            $publisherClient = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($publisherClient, $errstr);
+            $server->acceptClient(5);
+
+            fwrite($publisherClient, "*3\r\n\$7\r\nPUBLISH\r\n\$4\r\nnews\r\n\$5\r\nhello\r\n");
+            $loop->tick(1);
+
+            self::assertSame(':0' . "\r\n", fread($publisherClient, 1024));
+
+            fclose($subscriberClient);
+            fclose($publisherClient);
+        } finally {
+            $server->stop();
+        }
+    }
 }
