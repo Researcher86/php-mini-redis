@@ -85,4 +85,15 @@ final class SnapshotStoreTest extends TestCase
 
         self::assertSame('second', $restored->get('name'));
     }
+
+    public function testACorruptSnapshotFileIsIgnoredInsteadOfCrashing(): void
+    {
+        file_put_contents($this->path, 'this is not a serialized snapshot');
+        $snapshots = new SnapshotStore($this->path);
+        $store = new InMemoryStore();
+
+        $snapshots->load($store);
+
+        self::assertNull($store->get('anything'));
+    }
 }

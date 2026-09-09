@@ -23,13 +23,22 @@ final readonly class SnapshotStore
      * Writes the store's current contents, replacing any previous
      * snapshot. Written to a temporary file first and renamed into place,
      * so a crash mid-write cannot leave a half-written, unreadable
-     * snapshot behind.
+     * snapshot behind. Throws if the temporary write fails, so a lost
+     * snapshot is surfaced instead of silently gone.
      */
     public function save(InMemoryStore $store): void
     {
         $tmpPath = $this->path . '.tmp';
-        file_put_contents($tmpPath, serialize($store->snapshot()));
-        rename($tmpPath, $this->path);
+
+        $bytes = @file_put_contents($tmpPath, serialize($store->snapshot()));
+
+        if ($bytes === false) {
+            throw new \RuntimeException(sprintf('Failed to write snapshot to %s.', $tmpPath));
+        }
+
+        if (!@rename($tmpPath, $this->path)) {
+            throw new \RuntimeException(sprintf('Failed to move snapshot into place at %s.', $this->path));
+        }
     }
 
     /**
@@ -49,7 +58,7 @@ final readonly class SnapshotStore
             return;
         }
 
-        $entries = @unserialize($contents);
+        $entries = @unserialize($contents, ['allowed_classes' => false]);
 
         if (!is_array($entries)) {
             return;
