@@ -238,11 +238,6 @@ final class RedisServer
         return $connection;
     }
 
-    public function connections(): ConnectionManager
-    {
-        return $this->connections;
-    }
-
     public function connectedClientCount(): int
     {
         return $this->connections->count();

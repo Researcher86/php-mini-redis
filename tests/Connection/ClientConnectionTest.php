@@ -41,15 +41,9 @@ final class ClientConnectionTest extends TestCase
         $connection->appendToReadBuffer('foo bar');
         self::assertSame('SET foo bar', $connection->readBuffer()->contents());
 
-        $connection->clearReadBuffer();
-        self::assertSame('', $connection->readBuffer()->contents());
-
         $connection->appendToWriteBuffer('+OK');
         $connection->appendToWriteBuffer("\r\n");
         self::assertSame("+OK\r\n", $connection->writeBuffer()->contents());
-
-        $connection->clearWriteBuffer();
-        self::assertSame('', $connection->writeBuffer()->contents());
 
         $connection->close();
     }

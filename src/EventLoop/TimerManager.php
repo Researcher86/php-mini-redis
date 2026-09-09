@@ -34,11 +34,6 @@ final class TimerManager
         return $timer;
     }
 
-    public function isEmpty(): bool
-    {
-        return $this->timers === [];
-    }
-
     /**
      * Seconds until the next timer is due, or null if there are none.
      */

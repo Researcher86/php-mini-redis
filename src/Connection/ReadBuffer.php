@@ -30,11 +30,6 @@ final class ReadBuffer
         return strlen($this->buffer);
     }
 
-    public function isEmpty(): bool
-    {
-        return $this->buffer === '';
-    }
-
     /**
      * Removes and returns the first $length bytes.
      */
@@ -44,10 +39,5 @@ final class ReadBuffer
         $this->buffer = substr($this->buffer, $length);
 
         return $chunk;
-    }
-
-    public function clear(): void
-    {
-        $this->buffer = '';
     }
 }

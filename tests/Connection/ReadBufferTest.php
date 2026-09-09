@@ -13,7 +13,6 @@ final class ReadBufferTest extends TestCase
     {
         $buffer = new ReadBuffer();
 
-        self::assertTrue($buffer->isEmpty());
         self::assertSame(0, $buffer->length());
         self::assertSame('', $buffer->contents());
     }
@@ -27,7 +26,6 @@ final class ReadBufferTest extends TestCase
 
         self::assertSame('SET foo bar', $buffer->contents());
         self::assertSame(11, $buffer->length());
-        self::assertFalse($buffer->isEmpty());
     }
 
     public function testConsumeRemovesAPrefix(): void
@@ -39,16 +37,5 @@ final class ReadBufferTest extends TestCase
 
         self::assertSame('SET ', $chunk);
         self::assertSame('foo bar', $buffer->contents());
-    }
-
-    public function testClearEmptiesTheBuffer(): void
-    {
-        $buffer = new ReadBuffer();
-        $buffer->append('SET foo bar');
-
-        $buffer->clear();
-
-        self::assertTrue($buffer->isEmpty());
-        self::assertSame('', $buffer->contents());
     }
 }

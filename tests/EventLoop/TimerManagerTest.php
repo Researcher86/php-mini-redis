@@ -9,11 +9,10 @@ use PHPUnit\Framework\TestCase;
 
 final class TimerManagerTest extends TestCase
 {
-    public function testIsEmptyInitially(): void
+    public function testNothingIsDueWithoutAnyTimers(): void
     {
         $timers = new TimerManager();
 
-        self::assertTrue($timers->isEmpty());
         self::assertNull($timers->nextDueIn(1000.0));
     }
 
@@ -31,10 +30,10 @@ final class TimerManagerTest extends TestCase
         $timers->tick(1010.0);
         self::assertSame(1, $fired);
 
-        // A one-off timer does not fire again.
+        // A one-off timer does not fire again, and is dropped once it has.
         $timers->tick(1020.0);
         self::assertSame(1, $fired);
-        self::assertTrue($timers->isEmpty());
+        self::assertNull($timers->nextDueIn(1020.0));
     }
 
     public function testEveryFiresRepeatedly(): void
@@ -51,7 +50,7 @@ final class TimerManagerTest extends TestCase
         $timers->tick(1020.0);
         self::assertSame(2, $fired);
 
-        self::assertFalse($timers->isEmpty());
+        self::assertSame(10.0, $timers->nextDueIn(1020.0));
     }
 
     public function testCancelStopsARepeatingTimer(): void
@@ -69,7 +68,7 @@ final class TimerManagerTest extends TestCase
         $timers->tick(1020.0);
 
         self::assertSame(1, $fired);
-        self::assertTrue($timers->isEmpty());
+        self::assertNull($timers->nextDueIn(1020.0));
     }
 
     public function testNextDueInReturnsTheSoonestTimer(): void

@@ -43,15 +43,4 @@ final class WriteBufferTest extends TestCase
 
         self::assertTrue($buffer->isEmpty());
     }
-
-    public function testClearEmptiesTheBuffer(): void
-    {
-        $buffer = new WriteBuffer();
-        $buffer->append("+OK\r\n");
-
-        $buffer->clear();
-
-        self::assertTrue($buffer->isEmpty());
-        self::assertSame('', $buffer->contents());
-    }
 }

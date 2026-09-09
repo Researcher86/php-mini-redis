@@ -45,9 +45,4 @@ final class WriteBuffer
 
         return $chunk;
     }
-
-    public function clear(): void
-    {
-        $this->buffer = '';
-    }
 }

@@ -49,14 +49,20 @@ final class ClientConnection
         $this->touch();
     }
 
-    public function touch(): void
-    {
-        $this->lastActivityAt = microtime(true);
-    }
 
     public function lastActivityAt(): float
     {
         return $this->lastActivityAt;
+    }
+
+    /**
+     * Every path that moves bytes in either direction counts as activity,
+     * which is what Phase 19's idle timeout measures - so this is called
+     * from each of them rather than left to the callers to remember.
+     */
+    private function touch(): void
+    {
+        $this->lastActivityAt = microtime(true);
     }
 
     public function readBuffer(): ReadBuffer
@@ -70,11 +76,6 @@ final class ClientConnection
         $this->touch();
     }
 
-    public function clearReadBuffer(): void
-    {
-        $this->readBuffer->clear();
-    }
-
     public function writeBuffer(): WriteBuffer
     {
         return $this->writeBuffer;
@@ -84,11 +85,6 @@ final class ClientConnection
     {
         $this->writeBuffer->append($bytes);
         $this->touch();
-    }
-
-    public function clearWriteBuffer(): void
-    {
-        $this->writeBuffer->clear();
     }
 
     public function close(): void
