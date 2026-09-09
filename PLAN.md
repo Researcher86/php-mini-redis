@@ -79,7 +79,7 @@ The project should remain:
 - [x] Phase 14 — Multiple Commands
 - [x] Phase 15 — Pipelining
 - [x] Phase 16 — TTL
-- [ ] Phase 17 — Expiration Strategy
+- [x] Phase 17 — Expiration Strategy
 - [x] Phase 18 — Event Loop Timers
 - [ ] Phase 19 — Connection Timeout
 - [ ] Phase 20 — Pub/Sub

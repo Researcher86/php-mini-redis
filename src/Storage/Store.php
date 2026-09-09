@@ -21,4 +21,10 @@ interface Store
      * @return bool True if the key existed and was removed.
      */
     public function delete(string $key): bool;
+
+    /**
+     * Removes every expired entry right away, instead of waiting for it to
+     * be noticed on the next access. Returns how many were removed.
+     */
+    public function sweepExpired(): int;
 }

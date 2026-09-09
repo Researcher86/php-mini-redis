@@ -20,12 +20,12 @@ use App\Storage\InMemoryStore;
 use App\Storage\Store;
 
 /**
- * Phase 12: accepts TCP clients through an EventLoop, parses complete RESP
- * values out of each connection's ReadBuffer, dispatches them as commands
+ * Accepts TCP clients through an EventLoop, parses complete RESP values
+ * out of each connection's ReadBuffer, dispatches them as commands
  * against a Store, and writes the encoded result back.
  *
- * Writes are not yet handled through a dedicated write buffer, so a large
- * or slow-to-drain response is simply written in one go.
+ * A timer periodically sweeps expired keys from the Store (active
+ * expiration), on top of the Store's own lazy expiration on access.
  */
 final class RedisServer
 {
@@ -38,12 +38,14 @@ final class RedisServer
     private Store $store;
     private RespStreamReader $streamReader;
     private RespEncoder $encoder;
+    private float $expirationSweepIntervalSeconds;
 
     public function __construct(
         ServerConfig $config,
         ?EventLoop $eventLoop = null,
         ?CommandDispatcher $dispatcher = null,
         ?Store $store = null,
+        float $expirationSweepIntervalSeconds = 1.0,
     ) {
         $this->socket = new ServerSocket($config);
         $this->connections = new ConnectionManager();
@@ -52,6 +54,13 @@ final class RedisServer
         $this->store = $store ?? new InMemoryStore();
         $this->streamReader = new RespStreamReader();
         $this->encoder = new RespEncoder();
+        $this->expirationSweepIntervalSeconds = $expirationSweepIntervalSeconds;
+
+        // Active expiration: expired keys are also removed on a timer,
+        // instead of only being noticed lazily the next time they are read.
+        $this->eventLoop->every($this->expirationSweepIntervalSeconds, function (): void {
+            $this->store->sweepExpired();
+        });
     }
 
     public function localAddress(): string

@@ -121,4 +121,23 @@ final class InMemoryStoreTest extends TestCase
 
         self::assertSame('def', $store->get('session'));
     }
+
+    public function testSweepExpiredRemovesOnlyExpiredEntriesAndReportsHowMany(): void
+    {
+        $now = 1000.0;
+        $store = new InMemoryStore(static function () use (&$now): float {
+            return $now;
+        });
+
+        $store->set('short', 'a', ttlSeconds: 10);
+        $store->set('long', 'b', ttlSeconds: 100);
+        $store->set('forever', 'c');
+        $now += 10;
+
+        self::assertSame(1, $store->sweepExpired());
+        self::assertFalse($store->has('short'));
+        self::assertTrue($store->has('long'));
+        self::assertTrue($store->has('forever'));
+        self::assertSame(0, $store->sweepExpired());
+    }
 }

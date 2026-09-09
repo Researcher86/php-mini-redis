@@ -46,6 +46,21 @@ final class InMemoryStore implements Store
         return true;
     }
 
+    public function sweepExpired(): int
+    {
+        $now = ($this->clock)();
+        $removed = 0;
+
+        foreach ($this->data as $key => $entry) {
+            if ($entry->isExpired($now)) {
+                unset($this->data[$key]);
+                $removed++;
+            }
+        }
+
+        return $removed;
+    }
+
     /**
      * Reads the entry for $key, lazily removing and treating it as absent
      * if its TTL has expired.

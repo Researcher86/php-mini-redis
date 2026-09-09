@@ -276,6 +276,42 @@ final class RedisServerTest extends TestCase
         }
     }
 
+    public function testExpiredKeysAreActivelyRemovedByTheSweepTimerWithoutBeingRead(): void
+    {
+        $now = 1000.0;
+        $clock = static function () use (&$now): float {
+            return $now;
+        };
+        $loop = new SelectLoop($clock);
+        $store = new InMemoryStore($clock);
+        $server = new RedisServer(
+            new ServerConfig(host: '127.0.0.1', port: 0),
+            $loop,
+            store: $store,
+            expirationSweepIntervalSeconds: 5.0,
+        );
+
+        try {
+            $store->set('session', 'abc', ttlSeconds: 10);
+
+            // Read the raw entries directly, instead of through has()/get(),
+            // which would themselves lazily expire the key - the point here
+            // is to prove the timer removes it without ever being read.
+            $entries = new \ReflectionProperty($store, 'data');
+            self::assertArrayHasKey('session', $entries->getValue($store));
+
+            $now += 5;
+            $loop->tick(0);
+            self::assertArrayHasKey('session', $entries->getValue($store), 'Not due yet: the TTL has not elapsed.');
+
+            $now += 5;
+            $loop->tick(0);
+            self::assertArrayNotHasKey('session', $entries->getValue($store));
+        } finally {
+            $server->stop();
+        }
+    }
+
     public function testAPartialWriteIsQueuedInTheWriteBufferInsteadOfBlocking(): void
     {
         $loop = new SelectLoop();
