@@ -481,6 +481,12 @@ final class RedisClient
             $errno,
             $errstr,
             $this->timeoutSeconds,
+            STREAM_CLIENT_CONNECT,
+            // Nagle's algorithm would hold a command back until the reply
+            // to the previous one has been acknowledged, which turns a
+            // series of small commands into a series of delayed-ACK waits.
+            // The server disables it for the same reason (ServerSocket).
+            stream_context_create(['socket' => ['tcp_nodelay' => true]]),
         );
 
         if ($socket === false) {

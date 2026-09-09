@@ -18,7 +18,20 @@ final readonly class ServerSocket
         ServerConfig $config,
     ) {
         $context = stream_context_create([
-            'socket' => ['backlog' => $config->backlog],
+            'socket' => [
+                'backlog' => $config->backlog,
+
+                // Nagle's algorithm holds a small write back until the
+                // previous one has been acknowledged, and a client that is
+                // busy reading replies has no reason to acknowledge
+                // promptly - so the second half of a pipeline's answers
+                // could sit in the kernel for a delayed-ACK's worth of time
+                // (~40 ms) before leaving. Real Redis disables it on every
+                // connection for exactly this reason. Accepted sockets
+                // inherit the listener's context, so setting it here covers
+                // all of them.
+                'tcp_nodelay' => true,
+            ],
         ]);
 
         $socket = @stream_socket_server(
