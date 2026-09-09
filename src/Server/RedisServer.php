@@ -419,7 +419,7 @@ final class RedisServer
             $this->metrics->recordBytesWritten($written);
         }
 
-        if ($buffer->isEmpty()) {
+        if ($buffer->isEmpty()) { // @phpstan-ignore if.alwaysFalse (PHPStan can't see WriteBuffer::consume() change the buffer)
             $this->eventLoop->removeWritable($connection->socket());
             $connection->setState(ConnectionState::Reading);
             $this->resumeReadingIfPaused($connection);

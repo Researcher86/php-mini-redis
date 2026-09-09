@@ -35,11 +35,15 @@ final class WriteBuffer
     }
 
     /**
-     * Removes the first $length bytes, e.g. after a partial write.
+     * Removes and returns the first $length bytes, e.g. after a partial
+     * write.
      */
-    public function consume(int $length): void
+    public function consume(int $length): string
     {
+        $chunk = substr($this->buffer, 0, $length);
         $this->buffer = substr($this->buffer, $length);
+
+        return $chunk;
     }
 
     public function clear(): void

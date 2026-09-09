@@ -30,17 +30,16 @@ final class WriteBufferTest extends TestCase
         self::assertFalse($buffer->isEmpty());
     }
 
-    public function testConsumeRemovesAPrefixAfterAPartialWrite(): void
+    public function testConsumeReturnsTheRemovedPrefixAfterAPartialWrite(): void
     {
         $buffer = new WriteBuffer();
         $buffer->append("+OK\r\n");
 
-        $buffer->consume(3);
-
+        self::assertSame("+OK", $buffer->consume(3));
         self::assertSame("\r\n", $buffer->contents());
         self::assertFalse($buffer->isEmpty());
 
-        $buffer->consume(2);
+        self::assertSame("\r\n", $buffer->consume(2));
 
         self::assertTrue($buffer->isEmpty());
     }
