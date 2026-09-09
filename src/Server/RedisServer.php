@@ -19,6 +19,7 @@ use App\Connection\ConnectionState;
 use App\EventLoop\EventLoop;
 use App\EventLoop\SelectLoop;
 use App\Metrics\ServerMetrics;
+use App\Persistence\ForkingSnapshotWorker;
 use App\Persistence\SnapshotStore;
 use App\Protocol\RespEncoder;
 use App\Protocol\RespStreamReader;
@@ -55,6 +56,7 @@ final class RedisServer
     private ChannelRegistry $channels;
     private TransactionManager $transactions;
     private ?SnapshotStore $snapshots;
+    private ?ForkingSnapshotWorker $snapshotWorker;
     private ServerMetrics $metrics;
     private int $lowWriteBufferBytes;
     private bool $shuttingDown = false;
@@ -107,6 +109,7 @@ final class RedisServer
         $this->expirationSweepIntervalSeconds = $expirationSweepIntervalSeconds;
         $this->idleTimeoutSeconds = $idleTimeoutSeconds;
         $this->snapshots = $snapshotPath === null ? null : new SnapshotStore($snapshotPath);
+        $this->snapshotWorker = $this->snapshots === null ? null : new ForkingSnapshotWorker($this->snapshots);
         $this->metrics = new ServerMetrics();
 
         if ($this->snapshots !== null && $this->store instanceof InMemoryStore) {
@@ -160,8 +163,8 @@ final class RedisServer
      */
     public function saveSnapshot(): void
     {
-        if ($this->snapshots !== null && $this->store instanceof InMemoryStore) {
-            $this->snapshots->save($this->store);
+        if ($this->snapshotWorker !== null && $this->store instanceof InMemoryStore) {
+            $this->snapshotWorker->save($this->store);
         }
     }
 
@@ -291,6 +294,14 @@ final class RedisServer
         pcntl_signal(SIGINT, function (): void {
             $this->requestShutdown();
         });
+
+        // Reap forked snapshot children so they don't linger as zombies.
+        if (function_exists('pcntl_waitpid')) {
+            pcntl_signal(SIGCHLD, function (): void {
+                while (pcntl_waitpid(-1, $status, WNOHANG) > 0) {
+                }
+            });
+        }
     }
 
     /**

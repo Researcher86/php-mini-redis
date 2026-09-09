@@ -589,6 +589,11 @@ final class RedisServerTest extends TestCase
             $first = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), snapshotPath: $path);
             $first->store()->set('name', 'Tanat');
             $first->saveSnapshot();
+
+            // The snapshot is written by a forked child (Phase 35), so the
+            // file may not exist the instant saveSnapshot() returns; wait
+            // for it to land.
+            $this->waitForSnapshotFile($path);
             $first->stop();
 
             $second = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), snapshotPath: $path);
@@ -621,6 +626,8 @@ final class RedisServerTest extends TestCase
                 $server->store()->set('name', 'Tanat');
                 usleep(20_000);
                 $loop->tick(0.5);
+
+                $this->waitForSnapshotFile($path);
 
                 $reloaded = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), snapshotPath: $path);
 
@@ -1013,5 +1020,22 @@ final class RedisServerTest extends TestCase
         } finally {
             $server->stop();
         }
+    }
+
+    private function waitForSnapshotFile(string $path): void
+    {
+        // tempnam() pre-creates an empty file at $path and PHP caches its
+        // stat, so wait for the worker's rename() of the serialized data to
+        // land - clearing the stat cache each pass or filesize() keeps
+        // returning the stale empty size.
+        for ($i = 0; $i < 200; $i++) {
+            clearstatcache(true, $path);
+            if ((filesize($path) ?? 0) > 0) {
+                return;
+            }
+            usleep(10_000);
+        }
+
+        self::fail('The forked snapshot worker should have written the file.');
     }
 }

@@ -1274,6 +1274,48 @@ own timers is directly visible in INFO.
 
 ---
 
+# Phase 35 — Forked Persistence Worker
+
+## Goal
+
+Phase 11's snapshot ran synchronously on the event loop's timer: copying
+the store into an array, serializing it, and writing it to disk all
+happened inside a loop callback. A large store blocked the loop - every
+client and timer waited for the disk write to finish. Do the write off the
+loop in a forked child.
+
+## Tasks
+
+* [x] New `ForkingSnapshotWorker` forks a child per save; the child
+      serializes and writes the snapshot then `exit(0)`, never returning
+      to the parent's event loop
+* [x] PHP's copy-on-write means the child's view of the store is a
+      consistent point-in-time snapshot taken with no upfront copy in the
+      parent - the parent keeps serving the loop throughout
+* [x] The parent reaps forked children via a `SIGCHLD` handler
+      (`pcntl_waitpid(-1, ..., WNOHANG)`) installed alongside the existing
+      SIGTERM/SIGINT handlers, so they don't linger as zombies
+* [x] Falls back to a synchronous save when `pcntl_fork` is unavailable or
+      the fork fails - correct, just blocks the loop for the duration
+
+## Definition of Done
+
+A snapshot no longer blocks the event loop: the parent returns from
+`saveSnapshot()` as soon as the child is forked, and the file lands on
+disk asynchronously. Loading remains unchanged.
+
+## Tests
+
+* `ForkingSnapshotWorkerTest::testTheForkedChildWritesALoadableSnapshot` -
+  the forked child's write lands and reloads into a fresh store
+* `RedisServerTest::testDataSavedByOneServerIsLoadedByTheNext` and
+  `testPeriodicSnapshotsSaveWithoutBeingAskedExplicitly` were updated for
+  the async write: they wait for the snapshot file to land (clearing PHP's
+  stat cache, which otherwise keeps reporting the stale empty `tempnam`
+  file) before loading
+
+---
+
 # Final Principle
 
 Do not optimize for:
