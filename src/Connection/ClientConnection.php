@@ -11,7 +11,7 @@ namespace App\Connection;
 final class ClientConnection
 {
     private ConnectionState $state;
-    private string $readBuffer = '';
+    private ReadBuffer $readBuffer;
     private string $writeBuffer = '';
     private float $lastActivityAt;
 
@@ -21,6 +21,7 @@ final class ClientConnection
     public function __construct(private readonly mixed $socket)
     {
         $this->state = ConnectionState::New;
+        $this->readBuffer = new ReadBuffer();
         $this->lastActivityAt = microtime(true);
     }
 
@@ -58,20 +59,20 @@ final class ClientConnection
         return $this->lastActivityAt;
     }
 
-    public function readBuffer(): string
+    public function readBuffer(): ReadBuffer
     {
         return $this->readBuffer;
     }
 
     public function appendToReadBuffer(string $bytes): void
     {
-        $this->readBuffer .= $bytes;
+        $this->readBuffer->append($bytes);
         $this->touch();
     }
 
     public function clearReadBuffer(): void
     {
-        $this->readBuffer = '';
+        $this->readBuffer->clear();
     }
 
     public function writeBuffer(): string

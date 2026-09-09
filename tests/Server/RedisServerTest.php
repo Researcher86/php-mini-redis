@@ -6,6 +6,7 @@ namespace App\Tests\Server;
 
 use App\Connection\ClientConnection;
 use App\Connection\ConnectionState;
+use App\EventLoop\SelectLoop;
 use App\Server\RedisServer;
 use App\Server\ServerConfig;
 use PHPUnit\Framework\TestCase;
@@ -100,5 +101,54 @@ final class RedisServerTest extends TestCase
         self::assertSame(ConnectionState::Closed, $accepted->state());
 
         fclose($client);
+    }
+
+    public function testPartialWritesAccumulateInTheReadBufferAcrossTicks(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), $loop);
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+
+            $connection = $server->acceptClient(5);
+            self::assertInstanceOf(ClientConnection::class, $connection);
+
+            fwrite($client, 'SET f');
+            $loop->tick(1);
+            self::assertSame('SET f', $connection->readBuffer()->contents());
+            self::assertSame(ConnectionState::Reading, $connection->state());
+
+            fwrite($client, 'oo bar');
+            $loop->tick(1);
+            self::assertSame('SET foo bar', $connection->readBuffer()->contents());
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
+
+    public function testClientDisconnectIsDetectedAndCleanedUp(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), $loop);
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+
+            $connection = $server->acceptClient(5);
+            self::assertInstanceOf(ClientConnection::class, $connection);
+
+            fclose($client);
+            $loop->tick(1);
+
+            self::assertSame(0, $server->connectedClientCount());
+            self::assertSame(ConnectionState::Closed, $connection->state());
+        } finally {
+            $server->stop();
+        }
     }
 }

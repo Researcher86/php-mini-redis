@@ -11,14 +11,15 @@ use App\EventLoop\EventLoop;
 use App\EventLoop\SelectLoop;
 
 /**
- * Phase 3: accepts TCP clients through an EventLoop instead of blocking on
- * one client at a time, and represents each one as a ClientConnection.
+ * Phase 5: accepts TCP clients through an EventLoop and buffers whatever
+ * they send, byte by byte, into each ClientConnection's ReadBuffer.
  *
- * Reading and writing client data is not implemented yet - every accepted
- * connection is simply held open and tracked.
+ * Parsing that buffer into commands is not implemented yet.
  */
 final class RedisServer
 {
+    private const int READ_CHUNK_SIZE = 65536;
+
     private ServerSocket $socket;
     private ConnectionManager $connections;
     private EventLoop $eventLoop;
@@ -50,6 +51,7 @@ final class RedisServer
         $connection = new ClientConnection($socket);
         $connection->setState(ConnectionState::Connected);
         $this->connections->add($connection);
+        $this->watchForIncomingData($connection);
 
         return $connection;
     }
@@ -87,5 +89,38 @@ final class RedisServer
         $this->eventLoop->stop();
         $this->connections->closeAll();
         $this->socket->close();
+    }
+
+    /**
+     * Reads whatever is available into the connection's ReadBuffer whenever
+     * its socket becomes readable, and disconnects it once the client goes
+     * away.
+     */
+    private function watchForIncomingData(ClientConnection $connection): void
+    {
+        $this->eventLoop->onReadable($connection->socket(), function () use ($connection): void {
+            $chunk = @fread($connection->socket(), self::READ_CHUNK_SIZE);
+
+            if ($chunk === false || ($chunk === '' && feof($connection->socket()))) {
+                $this->disconnectClient($connection);
+
+                return;
+            }
+
+            if ($chunk === '') {
+                return;
+            }
+
+            $connection->setState(ConnectionState::Reading);
+            $connection->appendToReadBuffer($chunk);
+        });
+    }
+
+    private function disconnectClient(ClientConnection $connection): void
+    {
+        $this->eventLoop->removeReadable($connection->socket());
+        $this->eventLoop->removeWritable($connection->socket());
+        $this->connections->remove($connection);
+        $connection->close();
     }
 }
