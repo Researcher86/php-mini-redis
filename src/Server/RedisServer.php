@@ -322,16 +322,16 @@ final class RedisServer
 
     /**
      * Reacts to SIGTERM/SIGINT with requestShutdown() instead of the
-     * default "terminate immediately". A no-op where ext-pcntl isn't
-     * available.
+     * default "terminate immediately".
      */
     private function installSignalHandlers(): void
     {
-        if (!function_exists('pcntl_signal')) {
-            return;
-        }
-
+        // Delivered as they arrive rather than only at pcntl_signal_dispatch()
+        // calls: the loop spends most of its life inside stream_select(),
+        // which is exactly where a shutdown request has to be able to reach
+        // it.
         pcntl_async_signals(true);
+
         pcntl_signal(SIGTERM, function (): void {
             $this->requestShutdown();
         });
@@ -340,12 +340,10 @@ final class RedisServer
         });
 
         // Reap forked snapshot children so they don't linger as zombies.
-        if (function_exists('pcntl_waitpid')) {
-            pcntl_signal(SIGCHLD, function (): void {
-                while (pcntl_waitpid(-1, $status, WNOHANG) > 0) {
-                }
-            });
-        }
+        pcntl_signal(SIGCHLD, function (): void {
+            while (pcntl_waitpid(-1, $status, WNOHANG) > 0) {
+            }
+        });
     }
 
     /**

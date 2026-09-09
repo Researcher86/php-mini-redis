@@ -19,8 +19,8 @@ use Throwable;
  * serving the loop and reaps the child via SIGCHLD (installed by the
  * server).
  *
- * Falls back to a synchronous save when pcntl is unavailable or fork fails -
- * correct, just blocks the loop for the duration.
+ * Falls back to a synchronous save when fork() fails - correct, just blocks
+ * the loop for the duration.
  */
 final class ForkingSnapshotWorker
 {
@@ -52,12 +52,6 @@ final class ForkingSnapshotWorker
      */
     public function save(InMemoryStore $store): bool
     {
-        if (!function_exists('pcntl_fork')) {
-            $this->snapshots->save($store);
-
-            return true;
-        }
-
         if ($this->isChildStillWriting()) {
             return false;
         }

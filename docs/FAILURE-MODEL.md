@@ -42,8 +42,8 @@ than the snapshot itself.
 A snapshot that cannot be written says so rather than passing for one
 that was: the forked child reports the reason through the server's
 `Logger` and exits non-zero, and the
-synchronous paths (no `ext-pcntl`, a failed `fork()`, and the final
-snapshot on shutdown) raise the failure to the caller.
+synchronous paths (a failed `fork()`, and the final snapshot on shutdown)
+raise the failure to the caller.
 
 A shutdown the server gets to see - `stop()`, or `SIGTERM`/`SIGINT`
 through `requestShutdown()` - writes one final snapshot on the way out, so

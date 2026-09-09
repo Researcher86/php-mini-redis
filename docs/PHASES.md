@@ -786,8 +786,7 @@ stop accepting, finish in-flight responses, then exit.
       either every connection is gone or `shutdownGraceSeconds` has
       elapsed, whichever comes first
 * [x] `SIGTERM`/`SIGINT` wired to `requestShutdown()` via
-      `pcntl_async_signals()`, installed when `run()` starts; a no-op
-      where ext-pcntl isn't loaded
+      `pcntl_async_signals()`, installed when `run()` starts
 
 ## Definition of Done
 

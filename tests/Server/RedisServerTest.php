@@ -930,10 +930,6 @@ final class RedisServerTest extends TestCase
 
     public function testSigtermTriggersAGracefulShutdown(): void
     {
-        if (!function_exists('pcntl_signal') || !function_exists('posix_kill')) {
-            self::markTestSkipped('ext-pcntl / ext-posix not available.');
-        }
-
         $loop = new SelectLoop();
         $server = new RedisServer(
             new ServerConfig(host: '127.0.0.1', port: 0),
