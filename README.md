@@ -1344,7 +1344,7 @@ The project is implemented incrementally.
 
 - [x] Parser
 - [x] Encoder
-- [ ] Partial Requests
+- [x] Partial Requests
 
 ## Phase 5 — Commands
 
