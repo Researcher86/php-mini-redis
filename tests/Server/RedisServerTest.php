@@ -911,12 +911,47 @@ final class RedisServerTest extends TestCase
             $connection = $server->acceptClient(5);
             self::assertInstanceOf(ClientConnection::class, $connection);
 
-            // A bulk string declared far larger than the buffer limit,
-            // whose body never arrives - it can only ever keep growing.
-            fwrite($client, "\$1000000\r\nnot even close to that much data");
+            // A simple string whose terminating CRLF never arrives: the
+            // parser cannot rule it out the way it can an over-long
+            // declared length, so the buffer can only keep growing.
+            fwrite($client, '+' . str_repeat('a', 64));
             $loop->tick(1);
 
             self::assertStringStartsWith('-ERR Protocol error: too big buffer', fread($client, 1024));
+            self::assertSame(0, $server->connectedClientCount());
+            self::assertSame(ConnectionState::Closed, $connection->state());
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
+
+    public function testAValueTooBigForTheReadBufferIsRejectedOnItsDeclaredLength(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(
+            new ServerConfig(host: '127.0.0.1', port: 0),
+            $loop,
+            maxReadBufferBytes: 8 * 1024,
+        );
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+            $connection = $server->acceptClient(5);
+            self::assertInstanceOf(ClientConnection::class, $connection);
+
+            // Nothing but the header: a value that could never fit in the
+            // buffer meant to hold it is answered before its body is sent,
+            // rather than after the buffer has filled up with it.
+            fwrite($client, "*3\r\n\$3\r\nSET\r\n\$3\r\nbig\r\n\$1000000\r\n");
+            $loop->tick(1);
+
+            self::assertStringStartsWith(
+                '-ERR Protocol error: Bulk string length 1000000 exceeds',
+                (string) fread($client, 1024),
+            );
             self::assertSame(0, $server->connectedClientCount());
             self::assertSame(ConnectionState::Closed, $connection->state());
 

@@ -858,9 +858,13 @@ number of arguments, maximum connections.
 * [x] `maxReadBufferBytes` (default 512 KiB): a connection's ReadBuffer
       left over after every complete value has been consumed is checked
       against this after each read - a value that can never complete
-      (e.g. a bulk string declaring a huge length whose body never
-      finishes arriving) gets a RESP protocol error and disconnects,
-      instead of growing forever
+      (e.g. a simple string whose terminating CRLF never arrives) gets a
+      RESP protocol error and disconnects, instead of growing forever
+* [x] The same number bounds the largest value a command may carry: the
+      parser's `maxBulkStringBytes` is derived from it (Phase 31), so a
+      bulk string too big to ever fit in the buffer that must hold it is
+      refused on its declared length, before its body is sent, rather
+      than after half a megabyte of it has been read
 * [x] `maxArgumentsPerCommand` (default 1024): a command with more
       elements than this gets `-ERR too many arguments` - a command-level
       error like Phase 24's others, so the connection itself survives
@@ -1103,8 +1107,10 @@ itself.
       single element
 * [x] Parser-level limits, enforced on the declared header before the
       body/elements are looked at:
-      - `maxBulkStringBytes` (1 MiB) — a `$999999999...` header errors
-        up front instead of making the parser scan for a huge body
+      - `maxBulkStringBytes` (the parser's own default is 1 MiB;
+        `RedisServer` derives it from `maxReadBufferBytes` instead, see
+        Phase 25) — a `$999999999...` header errors up front instead of
+        making the parser scan for a huge body
       - `maxArrayElements` (1 000 000) — a structural backstop so an
         absurdly large array is never built
       - `maxNestingDepth` (32) — nested arrays can no longer exhaust the

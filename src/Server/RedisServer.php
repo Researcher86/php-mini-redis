@@ -22,6 +22,7 @@ use App\Metrics\ServerMetrics;
 use App\Persistence\ForkingSnapshotWorker;
 use App\Persistence\SnapshotStore;
 use App\Protocol\RespEncoder;
+use App\Protocol\RespParser;
 use App\Protocol\RespStreamReader;
 use App\Protocol\RespType;
 use App\Protocol\RespValue;
@@ -43,6 +44,13 @@ use App\Transaction\TransactionManager;
 final class RedisServer
 {
     private const int READ_CHUNK_SIZE = 65536;
+
+    /**
+     * Room left in the read buffer for everything around the largest value
+     * a command may carry: the array header, the command name, the key, and
+     * each bulk string's own length line.
+     */
+    private const int COMMAND_FRAMING_HEADROOM = 1024;
 
     private ServerSocket $socket;
     private ConnectionManager $connections;
@@ -78,6 +86,8 @@ final class RedisServer
         // A read buffer that grows past this without ever yielding a
         // complete value is either a broken client or a hostile one -
         // either way, left unbounded it is a memory-exhaustion vector.
+        // It doubles as the ceiling on a single value: nothing bigger than
+        // this buffer could ever be read out of it in one piece.
         private readonly int $maxReadBufferBytes = 512 * 1024,
         // Protects against a single command with an absurd number of
         // arguments (e.g. a scripted client gone wrong), independent of
@@ -104,7 +114,15 @@ final class RedisServer
         $this->eventLoop = $eventLoop ?? new SelectLoop();
         $this->dispatcher = $dispatcher ?? CommandDispatcher::withDefaultHandlers();
         $this->store = $store ?? new InMemoryStore();
-        $this->streamReader = new RespStreamReader();
+        // The parser's own bulk-string ceiling is derived from the read
+        // buffer that would have to hold the value, rather than set
+        // independently: a bulk string too big to ever arrive complete is
+        // rejected on its declared length - before its body is sent -
+        // instead of being answered with "too big buffer" after half a
+        // megabyte of it has already been read.
+        $this->streamReader = new RespStreamReader(new RespParser(
+            maxBulkStringBytes: max(1, $this->maxReadBufferBytes - self::COMMAND_FRAMING_HEADROOM),
+        ));
         $this->encoder = new RespEncoder();
         $this->expirationSweepIntervalSeconds = $expirationSweepIntervalSeconds;
         $this->idleTimeoutSeconds = $idleTimeoutSeconds;

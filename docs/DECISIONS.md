@@ -185,6 +185,24 @@ reused - the next connection to land on that id looks paused, so
 backpressure silently stops applying to it. Pinned by
 `RedisServerTest::testAClientThatVanishesMidPipelineDoesNotTakeTheServerDown`.
 
+## One number bounds both the read buffer and the largest value
+
+Phase 25 capped a connection's read buffer at 512 KiB; Phase 31 gave the
+parser its own 1 MiB ceiling on a bulk string. Both are sound in
+isolation and contradict each other in place: a 600 KiB value passes the
+parser's limit but can never be read out of a 512 KiB buffer, so it filled
+the buffer and came back as `-ERR Protocol error: too big buffer` - after
+half a megabyte of it had already been sent, and with a message about a
+buffer the client never asked about.
+
+`RedisServer` now derives the parser's `maxBulkStringBytes` from
+`maxReadBufferBytes` (less a kilobyte of headroom for the array header,
+the command name and each length line). The size of the buffer is the
+answer to "how large a value may be", asked once. A value over it is
+refused on its declared length - before its body is sent - and the client
+is told which limit it hit. The parser keeps its own 1 MiB default for
+callers that use it without a server around it.
+
 ## The loop forgets closed streams instead of trusting owners to deregister
 
 `SelectLoop` does not own the sockets it watches, and their owners close
