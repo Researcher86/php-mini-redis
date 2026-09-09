@@ -33,6 +33,29 @@ final class RedisServerTest extends TestCase
         }
     }
 
+    public function testAcceptedSocketIsNonBlocking(): void
+    {
+        $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0));
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+
+            $connection = $server->acceptClient(5);
+            self::assertInstanceOf(ClientConnection::class, $connection);
+
+            $meta = stream_get_meta_data($connection->socket());
+            self::assertFalse($meta['blocked']);
+
+            // No data was sent: a blocking read would stall this test.
+            self::assertSame('', fread($connection->socket(), 1024));
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
+
     public function testAcceptTimesOutWithoutAClient(): void
     {
         $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0));

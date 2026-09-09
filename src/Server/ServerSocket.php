@@ -53,12 +53,22 @@ final class ServerSocket
     /**
      * Blocks until a client connects, or until $timeoutSeconds elapses.
      *
+     * The accepted socket is switched to non-blocking mode: reads and
+     * writes on it must never stall the event loop while other clients
+     * are waiting to be served.
+     *
      * @return resource|false
      */
     public function accept(?float $timeoutSeconds = null)
     {
         // A timeout is an expected outcome here, not an error worth a warning.
-        return @stream_socket_accept($this->socket, $timeoutSeconds ?? -1);
+        $connection = @stream_socket_accept($this->socket, $timeoutSeconds ?? -1);
+
+        if ($connection !== false) {
+            stream_set_blocking($connection, false);
+        }
+
+        return $connection;
     }
 
     public function close(): void
