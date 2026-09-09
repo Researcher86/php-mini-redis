@@ -53,4 +53,72 @@ final class InMemoryStoreTest extends TestCase
 
         self::assertFalse($store->delete('missing'));
     }
+
+    public function testAValueWithATtlIsAvailableBeforeItExpires(): void
+    {
+        $now = 1000.0;
+        $store = new InMemoryStore(static function () use (&$now): float {
+            return $now;
+        });
+
+        $store->set('session', 'abc', ttlSeconds: 60);
+        $now += 59;
+
+        self::assertSame('abc', $store->get('session'));
+        self::assertTrue($store->has('session'));
+    }
+
+    public function testAValueWithATtlIsGoneOnceItExpires(): void
+    {
+        $now = 1000.0;
+        $store = new InMemoryStore(static function () use (&$now): float {
+            return $now;
+        });
+
+        $store->set('session', 'abc', ttlSeconds: 60);
+        $now += 60;
+
+        self::assertNull($store->get('session'));
+        self::assertFalse($store->has('session'));
+    }
+
+    public function testDeleteReturnsFalseForAnExpiredKey(): void
+    {
+        $now = 1000.0;
+        $store = new InMemoryStore(static function () use (&$now): float {
+            return $now;
+        });
+
+        $store->set('session', 'abc', ttlSeconds: 60);
+        $now += 60;
+
+        self::assertFalse($store->delete('session'));
+    }
+
+    public function testSetWithoutATtlNeverExpires(): void
+    {
+        $now = 1000.0;
+        $store = new InMemoryStore(static function () use (&$now): float {
+            return $now;
+        });
+
+        $store->set('name', 'Tanat');
+        $now += 1_000_000;
+
+        self::assertSame('Tanat', $store->get('name'));
+    }
+
+    public function testOverwritingAKeyReplacesItsPreviousTtl(): void
+    {
+        $now = 1000.0;
+        $store = new InMemoryStore(static function () use (&$now): float {
+            return $now;
+        });
+
+        $store->set('session', 'abc', ttlSeconds: 1);
+        $store->set('session', 'def');
+        $now += 60;
+
+        self::assertSame('def', $store->get('session'));
+    }
 }

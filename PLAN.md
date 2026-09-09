@@ -78,7 +78,7 @@ The project should remain:
 - [x] Phase 13 — Write Buffer
 - [x] Phase 14 — Multiple Commands
 - [x] Phase 15 — Pipelining
-- [ ] Phase 16 — TTL
+- [x] Phase 16 — TTL
 - [ ] Phase 17 — Expiration Strategy
 - [ ] Phase 18 — Event Loop Timers
 - [ ] Phase 19 — Connection Timeout

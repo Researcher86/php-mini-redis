@@ -11,7 +11,7 @@ namespace App\Storage;
  */
 interface Store
 {
-    public function set(string $key, mixed $value): void;
+    public function set(string $key, mixed $value, ?int $ttlSeconds = null): void;
 
     public function get(string $key): mixed;
 

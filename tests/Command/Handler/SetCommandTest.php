@@ -40,4 +40,42 @@ final class SetCommandTest extends TestCase
 
         self::assertSame(RespType::Error, $result->type);
     }
+
+    public function testStoresTheValueWithATtlWhenGivenEx(): void
+    {
+        $now = 1000.0;
+        $store = new InMemoryStore(static function () use (&$now): float {
+            return $now;
+        });
+        $command = Command::fromRespValue(RespValue::array([
+            RespValue::bulkString('SET'),
+            RespValue::bulkString('session'),
+            RespValue::bulkString('abc'),
+            RespValue::bulkString('EX'),
+            RespValue::bulkString('60'),
+        ]));
+
+        $result = (new SetCommand())->handle($command, $store);
+
+        self::assertSame('OK', $result->value);
+        self::assertSame('abc', $store->get('session'));
+
+        $now += 60;
+        self::assertNull($store->get('session'));
+    }
+
+    public function testRejectsANonIntegerExValue(): void
+    {
+        $command = Command::fromRespValue(RespValue::array([
+            RespValue::bulkString('SET'),
+            RespValue::bulkString('session'),
+            RespValue::bulkString('abc'),
+            RespValue::bulkString('EX'),
+            RespValue::bulkString('soon'),
+        ]));
+
+        $result = (new SetCommand())->handle($command, new InMemoryStore());
+
+        self::assertSame(RespType::Error, $result->type);
+    }
 }

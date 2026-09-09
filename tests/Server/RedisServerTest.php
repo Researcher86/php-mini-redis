@@ -9,6 +9,7 @@ use App\Connection\ConnectionState;
 use App\EventLoop\SelectLoop;
 use App\Server\RedisServer;
 use App\Server\ServerConfig;
+use App\Storage\InMemoryStore;
 use PHPUnit\Framework\TestCase;
 
 final class RedisServerTest extends TestCase
@@ -234,6 +235,40 @@ final class RedisServerTest extends TestCase
             $loop->tick(1);
 
             self::assertSame("+OK\r\n:2\r\n\$1\r\n2\r\n", fread($client, 1024));
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
+
+    public function testAKeySetWithExExpiresAfterItsTtl(): void
+    {
+        $loop = new SelectLoop();
+        $now = 1000.0;
+        $store = new InMemoryStore(static function () use (&$now): float {
+            return $now;
+        });
+        $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), $loop, store: $store);
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+            $server->acceptClient(5);
+
+            fwrite($client, "*5\r\n\$3\r\nSET\r\n\$7\r\nsession\r\n\$3\r\nabc\r\n\$2\r\nEX\r\n\$2\r\n60\r\n");
+            $loop->tick(1);
+            self::assertSame("+OK\r\n", fread($client, 1024));
+
+            fwrite($client, "*2\r\n\$3\r\nGET\r\n\$7\r\nsession\r\n");
+            $loop->tick(1);
+            self::assertSame("\$3\r\nabc\r\n", fread($client, 1024));
+
+            $now += 60;
+
+            fwrite($client, "*2\r\n\$3\r\nGET\r\n\$7\r\nsession\r\n");
+            $loop->tick(1);
+            self::assertSame("\$-1\r\n", fread($client, 1024));
 
             fclose($client);
         } finally {

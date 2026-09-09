@@ -13,13 +13,27 @@ final class SetCommand implements CommandHandler
 {
     public function handle(Command $command, Store $store): RespValue
     {
-        if (count($command->arguments) !== 2) {
-            return RespValue::error("ERR wrong number of arguments for 'set' command");
+        $arguments = $command->arguments;
+
+        if (count($arguments) === 2) {
+            [$key, $value] = $arguments;
+            $store->set($key, $value);
+
+            return RespValue::simpleString('OK');
         }
 
-        [$key, $value] = $command->arguments;
-        $store->set($key, $value);
+        if (count($arguments) === 4 && strtoupper($arguments[2]) === 'EX') {
+            [$key, $value, , $ttl] = $arguments;
 
-        return RespValue::simpleString('OK');
+            if (preg_match('/^\d+$/', $ttl) !== 1) {
+                return RespValue::error('ERR value is not an integer or out of range');
+            }
+
+            $store->set($key, $value, (int) $ttl);
+
+            return RespValue::simpleString('OK');
+        }
+
+        return RespValue::error("ERR wrong number of arguments for 'set' command");
     }
 }

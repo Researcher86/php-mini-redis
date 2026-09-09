@@ -1362,9 +1362,9 @@ The project is implemented incrementally.
 
 ## Phase 7 — TTL
 
-- [ ] Expiration
+- [x] Expiration
 - [ ] Timers
-- [ ] Cleanup
+- [x] Cleanup
 
 ## Phase 8 — Backpressure
 

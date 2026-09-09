@@ -6,32 +6,64 @@ namespace App\Storage;
 
 final class InMemoryStore implements Store
 {
-    /** @var array<string, mixed> */
+    /** @var array<string, StoredValue> */
     private array $data = [];
 
-    public function set(string $key, mixed $value): void
+    /** @var \Closure(): float */
+    private \Closure $clock;
+
+    public function __construct(?\Closure $clock = null)
     {
-        $this->data[$key] = $value;
+        $this->clock = $clock ?? static fn (): float => microtime(true);
+    }
+
+    public function set(string $key, mixed $value, ?int $ttlSeconds = null): void
+    {
+        $expiresAt = $ttlSeconds === null ? null : ($this->clock)() + $ttlSeconds;
+        $this->data[$key] = new StoredValue($value, $expiresAt);
     }
 
     public function get(string $key): mixed
     {
-        return $this->data[$key] ?? null;
+        $entry = $this->entryOrNull($key);
+
+        return $entry?->value;
     }
 
     public function has(string $key): bool
     {
-        return array_key_exists($key, $this->data);
+        return $this->entryOrNull($key) !== null;
     }
 
     public function delete(string $key): bool
     {
-        if (!array_key_exists($key, $this->data)) {
+        if (!$this->has($key)) {
             return false;
         }
 
         unset($this->data[$key]);
 
         return true;
+    }
+
+    /**
+     * Reads the entry for $key, lazily removing and treating it as absent
+     * if its TTL has expired.
+     */
+    private function entryOrNull(string $key): ?StoredValue
+    {
+        $entry = $this->data[$key] ?? null;
+
+        if ($entry === null) {
+            return null;
+        }
+
+        if ($entry->isExpired(($this->clock)())) {
+            unset($this->data[$key]);
+
+            return null;
+        }
+
+        return $entry;
     }
 }
