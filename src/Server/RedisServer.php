@@ -18,6 +18,8 @@ use App\Connection\ConnectionManager;
 use App\Connection\ConnectionState;
 use App\EventLoop\EventLoop;
 use App\EventLoop\SelectLoop;
+use App\Logging\Logger;
+use App\Logging\NullLogger;
 use App\Metrics\ServerMetrics;
 use App\Persistence\ForkingSnapshotWorker;
 use App\Persistence\SnapshotStore;
@@ -83,6 +85,9 @@ final class RedisServer
         ?string $snapshotPath = null,
         ?float $snapshotIntervalSeconds = null,
         private readonly Clock $clock = new SystemClock(),
+        // Where the server reports what it cannot answer for through a
+        // client connection - a snapshot that failed to write, say.
+        private readonly Logger $logger = new NullLogger(),
         private readonly float $shutdownGraceSeconds = 5.0,
         // A read buffer that grows past this without ever yielding a
         // complete value is either a broken client or a hostile one -
@@ -135,7 +140,7 @@ final class RedisServer
         $this->expirationSweepIntervalSeconds = $expirationSweepIntervalSeconds;
         $this->idleTimeoutSeconds = $idleTimeoutSeconds;
         $this->snapshots = $snapshotPath === null ? null : new SnapshotStore($snapshotPath);
-        $this->snapshotWorker = $this->snapshots === null ? null : new ForkingSnapshotWorker($this->snapshots);
+        $this->snapshotWorker = $this->snapshots === null ? null : new ForkingSnapshotWorker($this->snapshots, $this->logger);
         $this->metrics = new ServerMetrics();
 
         if ($this->snapshots !== null && $this->store instanceof InMemoryStore) {

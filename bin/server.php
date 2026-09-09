@@ -14,7 +14,7 @@ $host = getenv('REDIS_HOST') ?: '127.0.0.1';
 $port = (int) (getenv('REDIS_PORT') ?: 6380);
 
 $logger = new ConsoleLogger();
-$server = new RedisServer(new ServerConfig(host: $host, port: $port));
+$server = new RedisServer(new ServerConfig(host: $host, port: $port), logger: $logger);
 
 $logger->info(sprintf('Listening on %s', $server->localAddress()));
 

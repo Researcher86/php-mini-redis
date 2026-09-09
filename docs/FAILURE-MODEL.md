@@ -40,7 +40,8 @@ snapshot, not a write-ahead log: there is no way to recover writes newer
 than the snapshot itself.
 
 A snapshot that cannot be written says so rather than passing for one
-that was: the forked child prints the reason and exits non-zero, and the
+that was: the forked child reports the reason through the server's
+`Logger` and exits non-zero, and the
 synchronous paths (no `ext-pcntl`, a failed `fork()`, and the final
 snapshot on shutdown) raise the failure to the caller.
 

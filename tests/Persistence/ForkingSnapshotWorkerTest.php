@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Persistence;
 
+use App\Logging\ConsoleLogger;
 use App\Persistence\ForkingSnapshotWorker;
 use App\Persistence\SnapshotStore;
 use App\Storage\InMemoryStore;
@@ -85,7 +86,7 @@ final class ForkingSnapshotWorkerTest extends TestCase
 
         $worker = new ForkingSnapshotWorker(
             new SnapshotStore('/nonexistent-directory/snapshot.rdb'),
-            $errors,
+            new ConsoleLogger(stderr: $errors),
         );
 
         $store = new InMemoryStore();

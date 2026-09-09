@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Persistence;
 
+use App\Logging\Logger;
+use App\Logging\NullLogger;
 use App\Storage\InMemoryStore;
 use Throwable;
 
@@ -30,13 +32,10 @@ final class ForkingSnapshotWorker
 
     public function __construct(
         private readonly SnapshotStore $snapshots,
-        /**
-         * Where a child reports a failed write. Defaults to STDERR; a test
-         * (or a caller with somewhere better to put it) can pass its own.
-         *
-         * @var resource|null
-         */
-        private readonly mixed $errorStream = null,
+        // How a child reports a failed write. Silent by default, because a
+        // library class writing to somebody's stderr uninvited is not its
+        // decision to make - bin/server.php hands down a ConsoleLogger.
+        private readonly Logger $logger = new NullLogger(),
     ) {
     }
 
@@ -87,7 +86,7 @@ final class ForkingSnapshotWorker
         try {
             $this->snapshots->save($store);
         } catch (Throwable $exception) {
-            fwrite($this->errorStream ?? STDERR, sprintf("Snapshot failed: %s\n", $exception->getMessage()));
+            $this->logger->error(sprintf('Snapshot failed: %s', $exception->getMessage()));
 
             exit(1);
         }
