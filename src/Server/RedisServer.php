@@ -39,6 +39,7 @@ final class RedisServer
     private RespStreamReader $streamReader;
     private RespEncoder $encoder;
     private float $expirationSweepIntervalSeconds;
+    private ?float $idleTimeoutSeconds;
 
     public function __construct(
         ServerConfig $config,
@@ -46,6 +47,7 @@ final class RedisServer
         ?CommandDispatcher $dispatcher = null,
         ?Store $store = null,
         float $expirationSweepIntervalSeconds = 1.0,
+        ?float $idleTimeoutSeconds = null,
     ) {
         $this->socket = new ServerSocket($config);
         $this->connections = new ConnectionManager();
@@ -55,12 +57,19 @@ final class RedisServer
         $this->streamReader = new RespStreamReader();
         $this->encoder = new RespEncoder();
         $this->expirationSweepIntervalSeconds = $expirationSweepIntervalSeconds;
+        $this->idleTimeoutSeconds = $idleTimeoutSeconds;
 
         // Active expiration: expired keys are also removed on a timer,
         // instead of only being noticed lazily the next time they are read.
         $this->eventLoop->every($this->expirationSweepIntervalSeconds, function (): void {
             $this->store->sweepExpired();
         });
+
+        if ($this->idleTimeoutSeconds !== null) {
+            $this->eventLoop->every($this->idleTimeoutSeconds, function (): void {
+                $this->closeIdleConnections();
+            });
+        }
     }
 
     public function localAddress(): string
@@ -227,6 +236,21 @@ final class RedisServer
         $this->eventLoop->onWritable($connection->socket(), function () use ($connection): void {
             $this->flushWriteBuffer($connection);
         });
+    }
+
+    /**
+     * Closes every connection that has not shown any activity for at least
+     * $this->idleTimeoutSeconds.
+     */
+    private function closeIdleConnections(): void
+    {
+        $now = microtime(true);
+
+        foreach ($this->connections->all() as $connection) {
+            if ($now - $connection->lastActivityAt() >= $this->idleTimeoutSeconds) {
+                $this->disconnectClient($connection);
+            }
+        }
     }
 
     private function disconnectClient(ClientConnection $connection): void

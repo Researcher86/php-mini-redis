@@ -81,7 +81,7 @@ The project should remain:
 - [x] Phase 16 — TTL
 - [x] Phase 17 — Expiration Strategy
 - [x] Phase 18 — Event Loop Timers
-- [ ] Phase 19 — Connection Timeout
+- [x] Phase 19 — Connection Timeout
 - [ ] Phase 20 — Pub/Sub
 - [ ] Phase 21 — Transactions
 - [ ] Phase 22 — Persistence

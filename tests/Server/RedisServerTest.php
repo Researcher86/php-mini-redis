@@ -312,6 +312,47 @@ final class RedisServerTest extends TestCase
         }
     }
 
+    public function testIdleConnectionsAreClosedAfterTheTimeoutButActiveOnesAreNot(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(
+            new ServerConfig(host: '127.0.0.1', port: 0),
+            $loop,
+            idleTimeoutSeconds: 0.3,
+        );
+
+        try {
+            $idleClient = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($idleClient, $errstr);
+            $idleConnection = $server->acceptClient(5);
+            self::assertInstanceOf(ClientConnection::class, $idleConnection);
+
+            usleep(400_000);
+
+            $activeClient = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($activeClient, $errstr);
+            $activeConnection = $server->acceptClient(5);
+            self::assertInstanceOf(ClientConnection::class, $activeConnection);
+
+            // Touch the active connection's activity right before the check,
+            // well within the timeout, while the idle one has been silent
+            // ever since it connected. Both the touch and the idle check
+            // below happen within this single tick(), so PHPUnit's own
+            // overhead between statements cannot affect the comparison.
+            fwrite($activeClient, "*1\r\n\$4\r\nPING\r\n");
+            $loop->tick(1);
+
+            self::assertSame(ConnectionState::Closed, $idleConnection->state());
+            self::assertNotSame(ConnectionState::Closed, $activeConnection->state());
+            self::assertSame(1, $server->connectedClientCount());
+
+            fclose($idleClient);
+            fclose($activeClient);
+        } finally {
+            $server->stop();
+        }
+    }
+
     public function testAPartialWriteIsQueuedInTheWriteBufferInsteadOfBlocking(): void
     {
         $loop = new SelectLoop();
