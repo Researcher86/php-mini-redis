@@ -29,6 +29,13 @@ final class ForkingSnapshotWorker
 
     public function __construct(
         private readonly SnapshotStore $snapshots,
+        /**
+         * Where a child reports a failed write. Defaults to STDERR; a test
+         * (or a caller with somewhere better to put it) can pass its own.
+         *
+         * @var resource|null
+         */
+        private readonly mixed $errorStream = null,
     ) {
     }
 
@@ -72,12 +79,19 @@ final class ForkingSnapshotWorker
         }
 
         // Child: write the snapshot and exit immediately, never returning to
-        // the caller (which would keep running the parent's event loop).
+        // the caller (which would keep running the parent's event loop). A
+        // failed write exits non-zero rather than reporting the success it
+        // did not have - the exit status is the only thing the child can
+        // still say about it.
         try {
             $this->snapshots->save($store);
-        } finally {
-            exit(0);
+        } catch (\Throwable $exception) {
+            fwrite($this->errorStream ?? STDERR, sprintf("Snapshot failed: %s\n", $exception->getMessage()));
+
+            exit(1);
         }
+
+        exit(0);
     }
 
     /**

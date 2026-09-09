@@ -78,6 +78,36 @@ final class ForkingSnapshotWorkerTest extends TestCase
         self::assertLessThan(200, $i, 'A finished child should not block the next snapshot.');
     }
 
+    public function testAChildThatCannotWriteTheSnapshotExitsNonZeroAndSaysWhy(): void
+    {
+        $errors = tmpfile();
+        self::assertIsResource($errors);
+
+        $worker = new ForkingSnapshotWorker(
+            new SnapshotStore('/nonexistent-directory/snapshot.rdb'),
+            $errors,
+        );
+
+        $store = new InMemoryStore();
+        $store->set('name', 'Tanat');
+
+        self::assertTrue($worker->save($store));
+
+        $pid = pcntl_waitpid(-1, $status);
+        self::assertGreaterThan(0, $pid);
+        self::assertTrue(pcntl_wifexited($status));
+
+        // A snapshot that never reached disk must not look like one that
+        // did: the exit status and this line are all the child has left to
+        // say so with.
+        self::assertSame(1, pcntl_wexitstatus($status));
+
+        rewind($errors);
+        self::assertStringContainsString('Snapshot failed:', (string) stream_get_contents($errors));
+
+        fclose($errors);
+    }
+
     private function waitForSnapshot(): void
     {
         for ($i = 0; $i < 200; $i++) {
