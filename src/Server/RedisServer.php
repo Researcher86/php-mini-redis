@@ -407,7 +407,12 @@ final class RedisServer
 
         try {
             $command = Command::fromRespValue($value);
-            $this->metrics->recordCommand($command->name);
+
+            if ($this->dispatcher->knows($command->name)) {
+                $this->metrics->recordCommand($command->name);
+            } else {
+                $this->metrics->recordUnknownCommand();
+            }
 
             if ($this->transactions->isActive($connection) && !in_array($command->name, ['MULTI', 'EXEC', 'DISCARD'], true)) {
                 $this->transactions->queue($connection, $command);

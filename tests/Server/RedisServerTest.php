@@ -1106,6 +1106,9 @@ final class RedisServerTest extends TestCase
 
             self::assertSame(2, $server->metrics()->commandsProcessed());
             self::assertSame(1, $server->metrics()->commandsByType()['PING']);
+            self::assertSame(1, $server->metrics()->unknownCommands());
+            // The name a client made up is counted, never kept as a key.
+            self::assertArrayNotHasKey('UNKNOWN', $server->metrics()->commandsByType());
             self::assertGreaterThan(0, $server->metrics()->bytesRead());
             self::assertGreaterThan(0, $server->metrics()->bytesWritten());
             self::assertSame(1, $server->metrics()->errors());
@@ -1115,6 +1118,7 @@ final class RedisServerTest extends TestCase
             $reply = fread($client, 4096);
 
             self::assertStringContainsString('total_commands_processed:3', $reply);
+            self::assertStringContainsString('unknown_commands:1', $reply);
             self::assertStringContainsString('cmdstat_ping:calls=1', $reply);
 
             fclose($client);

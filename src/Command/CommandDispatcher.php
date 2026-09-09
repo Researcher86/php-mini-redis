@@ -27,6 +27,11 @@ final class CommandDispatcher
         $this->handlers[strtoupper($name)] = $handler;
     }
 
+    public function knows(string $name): bool
+    {
+        return isset($this->handlers[strtoupper($name)]);
+    }
+
     public function dispatch(Command $command, Store $store, ClientConnection $connection): RespValue
     {
         $handler = $this->handlers[$command->name] ?? null;

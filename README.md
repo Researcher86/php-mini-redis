@@ -78,7 +78,7 @@ make example NAME=slow-client            # a paused slow reader vs. an unaffecte
 | **Graceful shutdown** | `SIGTERM`/`SIGINT` stop new connections and drain existing ones before exiting |
 | **Limits** | capped read buffer size, arguments per command, and connection count - each replies with a RESP error instead of growing unbounded |
 | **Backpressure** | a slow reader's write buffer is capped - reading from it pauses until it drains, instead of growing unbounded |
-| **Metrics** | `INFO` reports connections, commands (overall and per name), bytes in/out, errors, expired keys |
+| **Metrics** | `INFO` reports connections, commands (overall, per name, and unknown), bytes in/out, errors, expired keys |
 
 Every phase in [docs/PHASES.md](docs/PHASES.md) is done - the tests, the
 measured benchmarks, and the standalone `examples/` scripts included -
@@ -811,8 +811,8 @@ INFO
 ```
 
 Replies with one bulk string of `key:value` lines - connections,
-commands processed overall and by name, bytes read/written, errors,
-expired keys. Matches real Redis's own `INFO` reply shape, though only a
+commands processed overall and by name, unknown commands, bytes
+read/written, errors, expired keys. Matches real Redis's own `INFO` reply shape, though only a
 small subset of what it actually reports.
 
 ---

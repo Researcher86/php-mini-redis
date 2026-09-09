@@ -58,6 +58,15 @@ final class CommandDispatcherTest extends TestCase
         self::assertSame(RespType::Error, $result->type);
     }
 
+    public function testKnowsReportsWhetherAHandlerIsRegistered(): void
+    {
+        $dispatcher = CommandDispatcher::withDefaultHandlers();
+
+        self::assertTrue($dispatcher->knows('GET'));
+        self::assertTrue($dispatcher->knows('get'));
+        self::assertFalse($dispatcher->knows('NOSUCHCOMMAND'));
+    }
+
     public function testDefaultHandlersCoverTheBasicCommands(): void
     {
         $dispatcher = CommandDispatcher::withDefaultHandlers();

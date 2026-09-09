@@ -17,6 +17,7 @@ final class ServerMetrics
     /** @var array<string, int> */
     private array $commandsByType = [];
 
+    private int $unknownCommands = 0;
     private int $bytesRead = 0;
     private int $bytesWritten = 0;
     private int $errors = 0;
@@ -27,10 +28,25 @@ final class ServerMetrics
         $this->connectionsTotal++;
     }
 
+    /**
+     * Only ever called with the name of a command the server actually has a
+     * handler for - see recordUnknownCommand() for why.
+     */
     public function recordCommand(string $name): void
     {
         $this->commandsProcessed++;
         $this->commandsByType[$name] = ($this->commandsByType[$name] ?? 0) + 1;
+    }
+
+    /**
+     * Counted, but never by name: the name of an unknown command is a string
+     * a client chose, and keying a counter by it would let anyone grow this
+     * map one entry per made-up name until the server runs out of memory.
+     */
+    public function recordUnknownCommand(): void
+    {
+        $this->commandsProcessed++;
+        $this->unknownCommands++;
     }
 
     public function recordBytesRead(int $bytes): void
@@ -67,6 +83,11 @@ final class ServerMetrics
     public function commandsByType(): array
     {
         return $this->commandsByType;
+    }
+
+    public function unknownCommands(): int
+    {
+        return $this->unknownCommands;
     }
 
     public function bytesRead(): int

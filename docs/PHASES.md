@@ -870,6 +870,9 @@ number of arguments, maximum connections.
 * [x] `maxArgumentsPerCommand` (default 1024): a command with more
       elements than this gets `-ERR too many arguments` - a command-level
       error like Phase 24's others, so the connection itself survives
+* [x] Per-command metrics are keyed only by names the server knows;
+      unknown ones are counted as a single `unknown_commands` total, so a
+      client cannot grow the counter map one made-up name at a time
 * [x] `maxConnections` (null = unbounded): a connection accepted past the
       limit gets `-ERR max number of clients reached` and is closed
       immediately, before it is ever tracked or counted

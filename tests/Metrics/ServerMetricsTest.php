@@ -16,6 +16,7 @@ final class ServerMetricsTest extends TestCase
         self::assertSame(0, $metrics->connectionsTotal());
         self::assertSame(0, $metrics->commandsProcessed());
         self::assertSame([], $metrics->commandsByType());
+        self::assertSame(0, $metrics->unknownCommands());
         self::assertSame(0, $metrics->bytesRead());
         self::assertSame(0, $metrics->bytesWritten());
         self::assertSame(0, $metrics->errors());
@@ -42,6 +43,22 @@ final class ServerMetricsTest extends TestCase
 
         self::assertSame(3, $metrics->commandsProcessed());
         self::assertSame(['GET' => 2, 'SET' => 1], $metrics->commandsByType());
+    }
+
+    public function testUnknownCommandsAreCountedWithoutBeingNamed(): void
+    {
+        $metrics = new ServerMetrics();
+
+        $metrics->recordCommand('GET');
+        $metrics->recordUnknownCommand();
+        $metrics->recordUnknownCommand();
+
+        self::assertSame(3, $metrics->commandsProcessed());
+        self::assertSame(2, $metrics->unknownCommands());
+
+        // The per-name map only ever holds names the server knows, so a
+        // client cannot grow it by inventing command names.
+        self::assertSame(['GET' => 1], $metrics->commandsByType());
     }
 
     public function testRecordBytesReadAndWrittenAccumulate(): void

@@ -32,6 +32,7 @@ final readonly class InfoCommand implements CommandHandler
             'connected_clients:' . $this->connections->count(),
             'total_connections_received:' . $this->metrics->connectionsTotal(),
             'total_commands_processed:' . $this->metrics->commandsProcessed(),
+            'unknown_commands:' . $this->metrics->unknownCommands(),
             'total_bytes_read:' . $this->metrics->bytesRead(),
             'total_bytes_written:' . $this->metrics->bytesWritten(),
             'total_errors:' . $this->metrics->errors(),
