@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Server;
 
+use App\Connection\ClientConnection;
+use App\Connection\ConnectionState;
 use App\Server\RedisServer;
 use App\Server\ServerConfig;
 use PHPUnit\Framework\TestCase;
@@ -20,7 +22,9 @@ final class RedisServerTest extends TestCase
             $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
             self::assertIsResource($client, $errstr);
 
-            self::assertTrue($server->acceptClient(5));
+            $connection = $server->acceptClient(5);
+            self::assertInstanceOf(ClientConnection::class, $connection);
+            self::assertSame(ConnectionState::Connected, $connection->state());
             self::assertSame(1, $server->connectedClientCount());
 
             fclose($client);
@@ -34,7 +38,7 @@ final class RedisServerTest extends TestCase
         $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0));
 
         try {
-            self::assertFalse($server->acceptClient(0.1));
+            self::assertNull($server->acceptClient(0.1));
             self::assertSame(0, $server->connectedClientCount());
         } finally {
             $server->stop();
@@ -47,10 +51,12 @@ final class RedisServerTest extends TestCase
 
         $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
         self::assertIsResource($client, $errstr);
-        self::assertTrue($server->acceptClient(5));
+        $connection = $server->acceptClient(5);
+        self::assertInstanceOf(ClientConnection::class, $connection);
 
         $server->stop();
 
         self::assertSame(0, $server->connectedClientCount());
+        self::assertSame(ConnectionState::Closed, $connection->state());
     }
 }

@@ -4,22 +4,26 @@ declare(strict_types=1);
 
 namespace App\Server;
 
+use App\Connection\ClientConnection;
+use App\Connection\ConnectionManager;
+use App\Connection\ConnectionState;
+
 /**
- * Phase 1: accepts TCP clients and keeps track of them.
+ * Phase 2: accepts TCP clients and represents each one as an explicit
+ * ClientConnection.
  *
  * Reading, writing and the event loop are not implemented yet - every
- * accepted connection is simply held open and counted.
+ * accepted connection is simply held open and tracked.
  */
 final class RedisServer
 {
     private ServerSocket $socket;
-
-    /** @var array<int, resource> */
-    private array $clients = [];
+    private ConnectionManager $connections;
 
     public function __construct(ServerConfig $config)
     {
         $this->socket = new ServerSocket($config);
+        $this->connections = new ConnectionManager();
     }
 
     public function localAddress(): string
@@ -31,33 +35,34 @@ final class RedisServer
      * Blocks until a client connects (or the timeout elapses), and starts
      * tracking it.
      */
-    public function acceptClient(?float $timeoutSeconds = null): bool
+    public function acceptClient(?float $timeoutSeconds = null): ?ClientConnection
     {
-        $connection = $this->socket->accept($timeoutSeconds);
+        $socket = $this->socket->accept($timeoutSeconds);
 
-        if ($connection === false) {
-            return false;
+        if ($socket === false) {
+            return null;
         }
 
-        $this->clients[get_resource_id($connection)] = $connection;
+        $connection = new ClientConnection($socket);
+        $connection->setState(ConnectionState::Connected);
+        $this->connections->add($connection);
 
-        return true;
+        return $connection;
+    }
+
+    public function connections(): ConnectionManager
+    {
+        return $this->connections;
     }
 
     public function connectedClientCount(): int
     {
-        return count($this->clients);
+        return $this->connections->count();
     }
 
     public function stop(): void
     {
-        foreach ($this->clients as $client) {
-            if (is_resource($client)) {
-                fclose($client);
-            }
-        }
-
-        $this->clients = [];
+        $this->connections->closeAll();
         $this->socket->close();
     }
 }
