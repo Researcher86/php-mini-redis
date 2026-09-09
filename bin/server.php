@@ -18,10 +18,11 @@ $server = new RedisServer(new ServerConfig(host: $host, port: $port));
 
 $logger->info(sprintf('Listening on %s', $server->localAddress()));
 
-// Phase 3: the event loop accepts connections as they arrive, so this
-// process never blocks waiting on one particular client. Reading and
-// writing client data is not implemented yet - that arrives in later
-// phases.
+// The event loop accepts connections as they arrive, so this process never
+// blocks waiting on one particular client; everything each connection then
+// sends is read, executed and answered from inside the same loop. This
+// callback is the one hook into that - it runs per accepted connection,
+// before the client has sent anything.
 $server->run(function (ClientConnection $connection) use ($server, $logger): void {
     $logger->info(sprintf('Client connected. Total: %d', $server->connectedClientCount()));
 });
