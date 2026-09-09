@@ -68,14 +68,68 @@ here does I/O of its own inside a command handler.
 ## What this does not measure
 
 - **Pipelining and Pub/Sub** are not covered by `bin/bench.php` (it is
-  strictly one request, one reply, one client at a time) - both are
-  exercised functionally in `tests/Server/RedisServerTest.php`, but not
-  benchmarked for throughput here.
+  strictly one request, one reply, one client at a time) - see the
+  dedicated load scripts in `benchmarks/` below.
 - **1,000 concurrent clients**, the plan's own largest experiment, was not
   run - `bin/bench.php` forking 1,000 real child processes on a
   development container is itself a heavier operation than the server
   being measured, and would mostly be benchmarking process-creation
   overhead rather than the server.
-- **Memory** is not sampled by this tool at all; nothing in this codebase
-  currently exposes it (see `docs/PHASES.md`'s Phase 27 scope notes on
-  what `ServerMetrics` does and does not track).
+- **Memory** is not sampled by `bin/bench.php` - it is measured by the
+  dedicated `benchmarks/memory.php` script (see below).
+
+## Load tests: pipeline, Pub/Sub fan-out, memory
+
+The scripts under `benchmarks/` (see `benchmarks/README.md`) answer the
+load questions the review called for beyond single-command throughput.
+All run against a live server (`make run-server`) and were measured inside
+this same container.
+
+### Pipelining
+
+Measured from one connection sending a batch of PINGs, then reading all
+replies:
+
+| Batch size | Req/s |
+|---|---|
+| 1 | 620 |
+| 10 | 26,597 |
+| 100 | 46,817 |
+| 1,000 | 50,945 |
+| 5,000 | 53,846 |
+
+**A single request/reply round trip caps at ~620/s** (the serial
+send-wait-read pattern) - the same wall one serial client hits in the
+main benchmark. Pipelining removes that wait: from a batch of 100 upward
+the same connection sustains ~50k/s, an ~80x improvement. The remaining
+gap to the main benchmark's ~35-40k/s at 10 clients is the same event-loop
+serialization as always.
+
+### Pub/Sub fan-out
+
+| Subscribers | Messages | Deliveries | Deliveries/s |
+|---|---|---|---|
+| 20 | 50 | 1,000 | 52,088 |
+
+20 subscribers on one channel, 50 published messages: 1,000 deliveries in
+~19 ms. Fan-out is the dominant cost - one PUBLISH writes to every
+subscriber's socket - so this number is really "how fast can one
+single-threaded loop touch 20 sockets".
+
+### Memory
+
+100,000 keys of 64 bytes written over one connection:
+
+| | RSS |
+|---|---|
+| Before | 28.43 MiB |
+| After | 56.83 MiB |
+| Peak | 94.17 MiB |
+| Per key | ~297 B |
+
+The write rate (~14k writes/s) is below the PING/SET rate from the main
+benchmark because each SET here also serializes a fresh 100+ byte value.
+The per-key cost includes the key string, the `StoredValue` object, and
+the `data` array slot, plus PHP's allocator overhead for ~100k objects;
+the difference between "after" and "peak" is the transient allocation
+pressure of the write loop.

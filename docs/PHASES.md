@@ -1316,6 +1316,67 @@ disk asynchronously. Loading remains unchanged.
 
 ---
 
+# Phase 36 — Epoll Loop (deferred)
+
+The review proposed an `EpollLoop` - an epoll reactor built on `FFI`
+(`epoll_create1`/`epoll_ctl`/`epoll_wait`) with a fallback to `SelectLoop`
+when FFI or the syscalls are unavailable.
+
+**Status: deferred.** The development container's PHP build does not
+include `ext-ffi` (`class_exists(FFI::class)` is `false`), so the epoll
+path could be neither built nor tested here. Writing a substantial,
+untestable FFI/native-interop reactor blind would be irresponsible.
+
+This stays the case until either:
+* `ext-ffi` is enabled in the environment (then the epoll reactor can be
+  implemented behind an `EventLoop::metrics()`-style contract and tested),
+  or
+* `stream_select`'s limits (FD_SETSIZE ~1024 fds, O(n) scan per wait)
+  actually become the server's bottleneck in load testing - at which
+  point a real epoll/kqueue loop is the answer.
+
+The `EventLoop` interface (including the Phase 34 `metrics()` accessor)
+was deliberately shaped so such a loop can drop in without touching
+`RedisServer` or its tests.
+
+---
+
+# Phase 37 — Load Testing
+
+## Goal
+
+Phase-by-phase work had proven each behavior correct against targeted
+tests, but nothing showed how the server fared under realistic load. The
+review called for evidence across the shapes of traffic a Redis server
+actually sees: a pipelined client, a slow client under backpressure,
+Pub/Sub fan-out to many subscribers, and memory growth.
+
+## Tasks
+
+* [x] Load-test scripts under `benchmarks/`:
+  - `pipeline.php` - one client driving many commands back-to-back without
+    waiting per command, measuring throughput
+  - `slow-client.php` - a subscriber that reads slowly (or not at all),
+    exercising the Phase 32 backpressure and Phase 19 idle timeout
+  - `pubsub-fanout.php` - a publisher and many subscribers, measuring
+    message fan-out
+  - `memory.php` - write many keys and report peak/current memory usage
+* [x] Document how to run each in `benchmarks/README.md`
+
+## Definition of Done
+
+Each traffic shape has a runnable, repeatable benchmark that starts a real
+server (via `make`), drives it, and reports a concrete number; the
+benchmarks are documented so they can be reproduced.
+
+## Tests
+
+Load tests are manual/scripted (not unit tests) by nature; the unit tests
+already pin each underlying behavior (backpressure in Phase 32, Pub/Sub in
+Phase 15, pipelining in Phase 10).
+
+---
+
 # Final Principle
 
 Do not optimize for:
