@@ -1238,22 +1238,24 @@ Restore State
 
 # Component Responsibilities
 
-| Component           | Responsibility                         |
-| ------------------- | -------------------------------------- |
-| `RedisServer`       | Server lifecycle and component wiring  |
-| `ServerSocket`      | Accept new TCP connections             |
-| `EventLoop`         | Wait for readable and writable streams |
-| `Connection`        | Client socket and buffers              |
-| `ConnectionManager` | Track active connections               |
-| `RespParser`        | Convert bytes into structured commands |
-| `RespEncoder`       | Convert results into RESP              |
-| `CommandDispatcher` | Route commands                         |
-| `Command`           | Execute application logic              |
-| `Database`          | Store key-value data                   |
-| `ExpirationManager` | Manage TTL and expired keys            |
-| `PubSubManager`     | Manage channels and subscribers        |
-| `Persistence`       | Save and restore state                 |
-| `MetricsCollector`  | Collect runtime metrics                |
+| Component                     | Responsibility                               |
+| ----------------------------- | --------------------------------------------- |
+| `RedisServer`                 | Server lifecycle and component wiring          |
+| `ServerSocket`                | Accept new TCP connections                     |
+| `EventLoop` / `SelectLoop`    | Wait for readable/writable streams and timers   |
+| `Timer` / `TimerManager`      | Scheduled callbacks (TTL sweep, idle timeout)   |
+| `ClientConnection`            | One client's socket, buffers, state, activity  |
+| `ConnectionManager`           | Track active connections                       |
+| `RespValue` / `RespParser`    | Convert bytes into structured RESP values      |
+| `RespStreamReader`            | Pull every complete value out of a buffer      |
+| `RespEncoder`                 | Convert results back into RESP                 |
+| `Command`                     | A parsed command: name + arguments             |
+| `CommandDispatcher`           | Route a Command to its handler                 |
+| `CommandHandler` implementations | Execute one command's logic                 |
+| `Store` / `InMemoryStore`     | Store key-value data, with TTL                 |
+| `ChannelRegistry`             | Manage Pub/Sub channels and subscribers        |
+| `TransactionManager`          | Per-connection MULTI/EXEC/DISCARD queue        |
+| *(not built yet)*             | Persistence, resource limits, metrics - see [PHASES.md](PHASES.md) |
 
 ---
 

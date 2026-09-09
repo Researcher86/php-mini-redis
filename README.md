@@ -15,9 +15,70 @@ The goal is to build a simplified server that exposes the fundamental ideas behi
 * command parsing;
 * in-memory storage;
 * TTL;
-* Pub/Sub.
+* Pub/Sub;
+* transactions.
 
 This repository is designed as an **executable mental model of an event-driven database server**.
+
+---
+
+## 30-second demo
+
+Requires Docker. Nothing is installed on your machine.
+
+```bash
+make install       # build the image and install dependencies
+make run-server     # start listening on 127.0.0.1:6380
+```
+
+In a second terminal:
+
+```bash
+make run-client ARGS="PING"
+# PONG
+
+make run-client ARGS="SET name Tanat"
+# OK
+
+make run-client ARGS="GET name"
+# Tanat
+```
+
+`bin/client.php` is a minimal RESP client - one command per invocation, the
+reply printed to stdout. It exists to make this demo runnable without
+`redis-cli`, not as a general-purpose client library.
+
+---
+
+## What it does
+
+| | |
+|---|---|
+| **Event loop** | one `stream_select()` over the listener and every client, non-blocking sockets throughout |
+| **RESP protocol** | simple strings, errors, integers, bulk strings, arrays - encoder and a parser that tolerates fragmented/partial input |
+| **Read/write buffering** | partial reads accumulate until a complete command exists; partial writes are queued and finished on the next writable event |
+| **Commands** | `PING`, `SET` (with `EX seconds`), `GET`, `DEL`, `EXISTS`, `INCR` |
+| **Pipelining** | multiple commands in one read, applied and answered in order |
+| **TTL** | lazy expiration on access, plus active expiration on a repeating timer |
+| **Connection timeout** | idle connections are closed after a configurable period |
+| **Pub/Sub** | `SUBSCRIBE` / `PUBLISH`, delivered to every subscriber of a channel |
+| **Transactions** | `MULTI` / `EXEC` / `DISCARD`, queued per connection |
+
+Still ahead: persistence, graceful shutdown, explicit resource limits,
+backpressure, metrics - see [docs/PHASES.md](docs/PHASES.md) for what each
+one means and where it stands.
+
+---
+
+## Documentation
+
+| | |
+|---|---|
+| **[docs/PHASES.md](docs/PHASES.md)** | how it was built - the phases, each with what it had to achieve, and (for the finished ones) which tests hold it |
+| **[docs/DECISIONS.md](docs/DECISIONS.md)** | why the code is shaped this way: what was tried, what was rejected, which ordering problems forced a change |
+| **[docs/FAILURE-MODEL.md](docs/FAILURE-MODEL.md)** | what breaks, what survives it, and what this server does *not* guarantee - read before trusting it with anything |
+| **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | the mental model of how the pieces talk to each other, traced through a request |
+| the rest of this file | the concepts, in depth |
 
 ---
 
@@ -254,19 +315,23 @@ Then reacts to that event.
 
 # Project Structure
 
+The tree below is what actually exists today, not an aspirational sketch -
+each directory maps to one layer of [ARCHITECTURE.md](docs/ARCHITECTURE.md)'s
+separation (Networking → Protocol → Commands → State).
+
 ```text
 php-mini-redis/
 │
 ├── bin/
-│   ├── server.php
-│   └── client.php
+│   ├── server.php              # entry point: RedisServer::run()
+│   └── client.php               # one-shot RESP client, for the demo above
 │
 ├── src/
 │   │
 │   ├── Server/
-│   │   ├── Server.php
+│   │   ├── RedisServer.php      # wires every layer below together
 │   │   ├── ServerConfig.php
-│   │   └── ServerState.php
+│   │   └── ServerSocket.php
 │   │
 │   ├── EventLoop/
 │   │   ├── EventLoop.php
@@ -275,46 +340,52 @@ php-mini-redis/
 │   │   └── TimerManager.php
 │   │
 │   ├── Connection/
-│   │   ├── Connection.php
+│   │   ├── ClientConnection.php
 │   │   ├── ConnectionManager.php
-│   │   └── ConnectionState.php
+│   │   ├── ConnectionState.php
+│   │   ├── ReadBuffer.php
+│   │   └── WriteBuffer.php
 │   │
 │   ├── Protocol/
+│   │   ├── RespValue.php
 │   │   ├── RespParser.php
 │   │   ├── RespEncoder.php
+│   │   ├── RespStreamReader.php
 │   │   └── ProtocolException.php
 │   │
 │   ├── Command/
 │   │   ├── Command.php
 │   │   ├── CommandDispatcher.php
+│   │   ├── CommandHandler.php
 │   │   └── Handler/
-│   │       ├── GetCommand.php
-│   │       ├── SetCommand.php
-│   │       ├── DelCommand.php
-│   │       └── ...
+│   │       ├── PingCommand.php, SetCommand.php, GetCommand.php,
+│   │       │   DelCommand.php, ExistsCommand.php, IncrCommand.php
+│   │       ├── SubscribeCommand.php, PublishCommand.php
+│   │       └── MultiCommand.php, ExecCommand.php, DiscardCommand.php
 │   │
 │   ├── Storage/
-│   │   ├── Storage.php
-│   │   ├── InMemoryStorage.php
-│   │   └── Entry.php
+│   │   ├── Store.php
+│   │   ├── InMemoryStore.php
+│   │   └── StoredValue.php
 │   │
-│   ├── Expiration/
-│   │   ├── ExpirationManager.php
-│   │   └── TTL.php
+│   ├── PubSub/
+│   │   └── ChannelRegistry.php
 │   │
-│   └── PubSub/
-│       ├── Channel.php
-│       └── PubSubManager.php
+│   ├── Transaction/
+│   │   └── TransactionManager.php
+│   │
+│   └── Logging/
+│       ├── Logger.php, ConsoleLogger.php, NullLogger.php
 │
-├── tests/
-├── examples/
-├── benchmarks/
+├── tests/                       # mirrors src/, one test class per class
 │
 ├── docs/
-│   └── ARCHITECTURE.md
+│   ├── ARCHITECTURE.md
+│   ├── PHASES.md
+│   ├── DECISIONS.md
+│   └── FAILURE-MODEL.md
 │
 ├── README.md
-├── PLAN.md
 ├── composer.json
 └── phpunit.xml
 ```
@@ -631,6 +702,54 @@ DEL key
 ```text
 EXISTS key
 ```
+
+---
+
+## INCR
+
+```text
+INCR key
+```
+
+Increments the integer stored at `key` by one, treating a missing key as
+`0`. Errors if the existing value is not an integer.
+
+---
+
+## SUBSCRIBE / PUBLISH
+
+```text
+SUBSCRIBE channel
+
+PUBLISH channel message
+```
+
+`PUBLISH` delivers a `message` push to every connection currently
+subscribed to `channel`, and replies with how many it reached. See
+[Pub/Sub](#pubsub) below.
+
+---
+
+## MULTI / EXEC / DISCARD
+
+```text
+MULTI
+
+↓
+
+queue commands, replying +QUEUED to each
+
+↓
+
+EXEC (run the queue, one array reply)
+
+or
+
+DISCARD (cancel it)
+```
+
+Queuing and execution are per connection - one client's `MULTI` has no
+effect on another's commands. See [Transactions](#transactions) below.
 
 ---
 
@@ -1081,6 +1200,49 @@ Write Message To Their Buffers
 
 ---
 
+# Transactions
+
+`MULTI` starts queuing commands for that connection instead of running
+them immediately.
+
+```text
+MULTI
+   │
+   ▼
+queue commands (each replies +QUEUED)
+   │
+   ▼
+EXEC
+   │
+   ▼
+run the queue, in order, through the same dispatcher
+   │
+   ▼
+one array reply, one element per queued command
+```
+
+`DISCARD` cancels the queue instead of running it - also replies `+OK`, but
+nothing executes.
+
+```text
+MULTI
+   │
+   ▼
+queue commands
+   │
+   ▼
+DISCARD
+   │
+   ▼
++OK, queue thrown away
+```
+
+The queue is per connection: one client's `MULTI` never sees another
+client's commands, and a disconnecting client's open transaction is
+discarded rather than left dangling.
+
+---
+
 # Connection Cleanup
 
 When a client disconnects:
@@ -1319,64 +1481,20 @@ Publish a message and observe delivery.
 
 # Roadmap
 
-The project is implemented incrementally.
+The project is implemented incrementally, thirty phases in total. The full
+list, with a Definition of Done and the exact tests behind each finished
+one, lives in [docs/PHASES.md](docs/PHASES.md) - this is the short version.
 
-## Phase 1 — TCP Server
+**Done:** TCP server, event loop, non-blocking sockets, read/write
+buffering, RESP protocol (parser + encoder, fragmentation-tolerant),
+command model, in-memory store, `PING`/`SET`/`GET`/`DEL`/`EXISTS`/`INCR`,
+command dispatcher, multiple commands per read, pipelining, TTL (lazy and
+active expiration), event loop timers, connection timeout, Pub/Sub,
+transactions.
 
-- [x] Socket
-- [x] Listen
-- [x] Accept Connection
-
-## Phase 2 — Event Loop
-
-- [x] Read Events
-- [x] Write Events
-- [ ] Timers
-
-## Phase 3 — Connections
-
-- [x] Connection Lifecycle
-- [x] Read Buffers
-- [x] Write Buffers
-- [x] Cleanup
-
-## Phase 4 — RESP
-
-- [x] Parser
-- [x] Encoder
-- [x] Partial Requests
-
-## Phase 5 — Commands
-
-- [x] PING
-- [x] SET
-- [x] GET
-- [x] DEL
-- [x] EXISTS
-
-## Phase 6 — Storage
-
-- [x] In-Memory Storage
-- [x] Keys
-- [x] Values
-
-## Phase 7 — TTL
-
-- [x] Expiration
-- [x] Timers
-- [x] Cleanup
-
-## Phase 8 — Backpressure
-
-- [ ] Slow Clients
-- [ ] Write Buffers
-- [ ] Flow Control
-
-## Phase 9 — Pub/Sub
-
-- [x] Channels
-- [x] Subscribers
-- [x] Message Delivery
+**Ahead:** persistence, graceful shutdown, explicit RESP error handling,
+resource limits, backpressure, metrics, a benchmark pass, and a handful of
+standalone `examples/` scripts.
 
 ---
 
