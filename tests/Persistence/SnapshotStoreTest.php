@@ -21,7 +21,9 @@ final class SnapshotStoreTest extends TestCase
     protected function tearDown(): void
     {
         @unlink($this->path);
-        @unlink($this->path . '.tmp');
+        foreach (glob($this->path . '.*.tmp') ?: [] as $leftover) {
+            @unlink($leftover);
+        }
     }
 
     public function testLoadIntoAFreshStoreIsANoOpWhenNoSnapshotExists(): void
@@ -84,6 +86,31 @@ final class SnapshotStoreTest extends TestCase
         $snapshots->load($restored);
 
         self::assertSame('second', $restored->get('name'));
+    }
+
+    public function testSavingIgnoresATemporaryFileLeftBehindByAnotherWriter(): void
+    {
+        $store = new InMemoryStore();
+        $store->set('name', 'Tanat');
+
+        // What another process writing a snapshot at the same time looks
+        // like from here. Sharing one temporary path would mean renaming
+        // that half-written file into place - the destination is supposed
+        // to only ever hold a snapshot somebody finished writing.
+        $foreignTmp = $this->path . '.999999.tmp';
+        file_put_contents($foreignTmp, 'half a snapshot');
+
+        try {
+            (new SnapshotStore($this->path))->save($store);
+
+            $reloaded = new InMemoryStore();
+            (new SnapshotStore($this->path))->load($reloaded);
+
+            self::assertSame('Tanat', $reloaded->get('name'));
+            self::assertSame('half a snapshot', file_get_contents($foreignTmp));
+        } finally {
+            @unlink($foreignTmp);
+        }
     }
 
     public function testACorruptSnapshotFileIsIgnoredInsteadOfCrashing(): void

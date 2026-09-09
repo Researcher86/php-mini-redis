@@ -21,7 +21,9 @@ final class ForkingSnapshotWorkerTest extends TestCase
     protected function tearDown(): void
     {
         @unlink($this->path);
-        @unlink($this->path . '.tmp');
+        foreach (glob($this->path . '.*.tmp') ?: [] as $leftover) {
+            @unlink($leftover);
+        }
     }
 
     public function testTheForkedChildWritesALoadableSnapshot(): void

@@ -25,10 +25,19 @@ final readonly class SnapshotStore
      * so a crash mid-write cannot leave a half-written, unreadable
      * snapshot behind. Throws if the temporary write fails, so a lost
      * snapshot is surfaced instead of silently gone.
+     *
+     * The temporary file is named for the process writing it. Snapshots are
+     * written from forked children (see ForkingSnapshotWorker), and two of
+     * them sharing one temporary path defeats the very guarantee the rename
+     * exists for: the child that renames first hands the *other* child's
+     * open file handle straight to the live snapshot path, which it then
+     * keeps writing into - so a reader can find the destination half
+     * written, which is exactly what renaming into place is meant to make
+     * impossible.
      */
     public function save(InMemoryStore $store): void
     {
-        $tmpPath = $this->path . '.tmp';
+        $tmpPath = sprintf('%s.%d.tmp', $this->path, getmypid());
 
         $bytes = @file_put_contents($tmpPath, serialize($store->snapshot()));
 
@@ -37,6 +46,8 @@ final readonly class SnapshotStore
         }
 
         if (!@rename($tmpPath, $this->path)) {
+            @unlink($tmpPath);
+
             throw new \RuntimeException(sprintf('Failed to move snapshot into place at %s.', $this->path));
         }
     }

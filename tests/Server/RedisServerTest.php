@@ -682,7 +682,9 @@ final class RedisServerTest extends TestCase
             }
         } finally {
             @unlink($path);
-            @unlink($path . '.tmp');
+            foreach (glob($path . '.*.tmp') ?: [] as $leftover) {
+                @unlink($leftover);
+            }
         }
     }
 
@@ -718,7 +720,9 @@ final class RedisServerTest extends TestCase
             }
         } finally {
             @unlink($path);
-            @unlink($path . '.tmp');
+            foreach (glob($path . '.*.tmp') ?: [] as $leftover) {
+                @unlink($leftover);
+            }
         }
     }
 
