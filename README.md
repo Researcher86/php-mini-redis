@@ -1348,11 +1348,11 @@ The project is implemented incrementally.
 
 ## Phase 5 — Commands
 
-- [ ] PING
-- [ ] SET
-- [ ] GET
-- [ ] DEL
-- [ ] EXISTS
+- [x] PING
+- [x] SET
+- [x] GET
+- [x] DEL
+- [x] EXISTS
 
 ## Phase 6 — Storage
 

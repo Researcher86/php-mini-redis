@@ -72,7 +72,7 @@ The project should remain:
 - [x] Phase 7 — RESP Parser
 - [x] Phase 8 — Command Model
 - [x] Phase 9 — In-Memory Store
-- [ ] Phase 10 — Basic Commands
+- [x] Phase 10 — Basic Commands
 - [ ] Phase 11 — Command Dispatcher
 - [ ] Phase 12 — Response Encoder
 - [ ] Phase 13 — Write Buffer
