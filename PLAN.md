@@ -76,7 +76,7 @@ The project should remain:
 - [x] Phase 11 — Command Dispatcher
 - [x] Phase 12 — Response Encoder
 - [x] Phase 13 — Write Buffer
-- [ ] Phase 14 — Multiple Commands
+- [x] Phase 14 — Multiple Commands
 - [ ] Phase 15 — Pipelining
 - [ ] Phase 16 — TTL
 - [ ] Phase 17 — Expiration Strategy

@@ -181,6 +181,37 @@ final class RedisServerTest extends TestCase
         }
     }
 
+    public function testMultipleCommandsPlusATrailingPartialOneAreHandledCorrectly(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), $loop);
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+            $connection = $server->acceptClient(5);
+            self::assertInstanceOf(ClientConnection::class, $connection);
+
+            // Two complete PING commands plus the start of a third, all in
+            // one read.
+            fwrite($client, "*1\r\n\$4\r\nPING\r\n*1\r\n\$4\r\nPING\r\n*1\r\n\$4\r\nPI");
+            $loop->tick(1);
+
+            self::assertSame("+PONG\r\n+PONG\r\n", fread($client, 1024));
+            self::assertSame("*1\r\n\$4\r\nPI", $connection->readBuffer()->contents());
+
+            fwrite($client, "NG\r\n");
+            $loop->tick(1);
+
+            self::assertSame("+PONG\r\n", fread($client, 1024));
+            self::assertSame('', $connection->readBuffer()->contents());
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
+
     public function testAPartialWriteIsQueuedInTheWriteBufferInsteadOfBlocking(): void
     {
         $loop = new SelectLoop();
