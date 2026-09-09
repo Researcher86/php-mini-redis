@@ -1198,6 +1198,12 @@ RUNNING
 
 ## Append Only Log
 
+**Not implemented here** - this section is the alternative, kept for
+contrast with the snapshot above. `SnapshotStore` is the only persistence
+this server has; the README lists AOF among the things the project
+deliberately does not become. What follows is the shape of the mechanism,
+not a description of code in this repository.
+
 Every mutation is recorded.
 
 ```text
@@ -1246,6 +1252,7 @@ Restore State
 | `Timer` / `TimerManager`      | Scheduled callbacks (TTL sweep, idle timeout)   |
 | `ClientConnection`            | One client's socket, buffers, state, activity  |
 | `ConnectionManager`           | Track active connections                       |
+| `ReadBuffer` / `WriteBuffer`  | Hold bytes until a value is complete / sent    |
 | `RespValue` / `RespParser`    | Convert bytes into structured RESP values      |
 | `RespStreamReader`            | Pull every complete value out of a buffer      |
 | `RespEncoder`                 | Convert results back into RESP                 |
@@ -1255,7 +1262,11 @@ Restore State
 | `Store` / `InMemoryStore`     | Store key-value data, with TTL                 |
 | `ChannelRegistry`             | Manage Pub/Sub channels and subscribers        |
 | `TransactionManager`          | Per-connection MULTI/EXEC/DISCARD queue        |
-| *(not built yet)*             | Persistence, resource limits, metrics - see [PHASES.md](PHASES.md) |
+| `SnapshotStore`               | Write the store to disk and read it back       |
+| `ForkingSnapshotWorker`       | Take that snapshot in a child, off the loop    |
+| `ServerMetrics`               | Count connections, commands, bytes, errors     |
+| `EventLoopMetrics`            | Count the loop's own passes, busy/idle, lag    |
+| `Clock` / `SystemClock`       | "What time is it", injectable for tests        |
 
 ---
 
