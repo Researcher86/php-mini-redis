@@ -1074,6 +1074,67 @@ demonstrates already has its own test from the phase that introduced it
 
 ---
 
+# Phase 31 — Strict RESP
+
+## Goal
+
+The parser was lenient in ways that silently corrupt data or invite
+memory abuse: a bulk string's trailing bytes were assumed to be CRLF
+without actually being checked, `:abc` and `$abc` were cast to integers
+(and came out as `0`), lengths below `-1` were not validated, and the
+limits lived *above* the parser — a `*1000000` header was turned into a
+million-element array before the command layer could reject it.
+
+Make parsing strict, and move the protocol-shaped limits into the parser
+itself.
+
+## Tasks
+
+* [x] Bulk strings: the two bytes after the body must actually be `\r\n`
+      — `$5\r\nhelloXX` is a protocol error, not `hello` (it was accepted
+      before, since only the presence of two bytes was checked)
+* [x] Integers (`:`): strict `-?(0|[1-9][0-9]*)` grammar validated by
+      `filter_var(..., FILTER_VALIDATE_INT)` — `:abc`, `:1.5`, `: 1` and
+      a 64-bit overflowing literal are all protocol errors instead of
+      silent `0`
+* [x] Lengths (`$`/`*`): only `-1` (null) or a non-negative count; `$-2`
+      and `*-2` are now protocol errors instead of being treated as a
+      single element
+* [x] Parser-level limits, enforced on the declared header before the
+      body/elements are looked at:
+      - `maxBulkStringBytes` (1 MiB) — a `$999999999...` header errors
+        up front instead of making the parser scan for a huge body
+      - `maxArrayElements` (1 000 000) — a structural backstop so an
+        absurdly large array is never built
+      - `maxNestingDepth` (32) — nested arrays can no longer exhaust the
+        stack
+* [x] `RespParserFuzzTest` — a table-driven sweep over truncations,
+      malformed lengths, missing/wrong terminators, and out-of-limit
+      input, asserting the three-way contract (more bytes / value /
+      protocol error) across ~40 cases
+
+## Definition of Done
+
+Every value that is *present* but not valid RESP raises a
+`ProtocolException`; nothing is silently corrupted by an `(int)` cast, and
+no amount of hostile header can make the parser grow memory before the
+command layer sees the value.
+
+## Tests
+
+* `RespParserFuzzTest::testNeedsMoreBytes`* — incomplete input still
+  returns `null`
+* `RespParserFuzzTest::testMalformedInputRaisesAProtocolError`* — the
+  strictness rows (wrong body terminator, non-integer lengths, lengths
+  below `-1`, oversized/nested past limits)
+* `RespParserFuzzTest::testValidInputStillParses`* — the valid edge cases
+  (`$0\r\n\r\n`, `*-1`, exact nesting limit) keep working
+* the existing `RespParserTest` and `RespStreamReaderTest` suites still
+  pass unchanged, which is what pins the strictness to the *grammar*
+  rather than changing valid inputs' behavior
+
+---
+
 # Final Principle
 
 Do not optimize for:
