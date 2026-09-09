@@ -7,6 +7,9 @@ namespace App\Server;
 use App\Command\Command;
 use App\Command\CommandDispatcher;
 use App\Command\CommandException;
+use App\Command\Handler\DiscardCommand;
+use App\Command\Handler\ExecCommand;
+use App\Command\Handler\MultiCommand;
 use App\Command\Handler\PublishCommand;
 use App\Command\Handler\SubscribeCommand;
 use App\Connection\ClientConnection;
@@ -21,6 +24,7 @@ use App\Protocol\RespValue;
 use App\PubSub\ChannelRegistry;
 use App\Storage\InMemoryStore;
 use App\Storage\Store;
+use App\Transaction\TransactionManager;
 
 /**
  * Accepts TCP clients through an EventLoop, parses complete RESP values
@@ -44,6 +48,7 @@ final class RedisServer
     private float $expirationSweepIntervalSeconds;
     private ?float $idleTimeoutSeconds;
     private ChannelRegistry $channels;
+    private TransactionManager $transactions;
 
     public function __construct(
         ServerConfig $config,
@@ -75,6 +80,13 @@ final class RedisServer
                 $this->flushWriteBuffer($subscriber);
             },
         ));
+
+        // Transactions: MULTI/EXEC/DISCARD need to intercept normal command
+        // execution (queue instead of run), handled in executeValue().
+        $this->transactions = new TransactionManager();
+        $this->dispatcher->register('MULTI', new MultiCommand($this->transactions));
+        $this->dispatcher->register('DISCARD', new DiscardCommand($this->transactions));
+        $this->dispatcher->register('EXEC', new ExecCommand($this->transactions, $this->dispatcher));
 
         // Active expiration: expired keys are also removed on a timer,
         // instead of only being noticed lazily the next time they are read.
@@ -208,7 +220,13 @@ final class RedisServer
 
         try {
             $command = Command::fromRespValue($value);
-            $result = $this->dispatcher->dispatch($command, $this->store, $connection);
+
+            if ($this->transactions->isActive($connection) && !in_array($command->name, ['MULTI', 'EXEC', 'DISCARD'], true)) {
+                $this->transactions->queue($connection, $command);
+                $result = RespValue::simpleString('QUEUED');
+            } else {
+                $result = $this->dispatcher->dispatch($command, $this->store, $connection);
+            }
         } catch (CommandException $exception) {
             $result = RespValue::error('ERR ' . $exception->getMessage());
         }
@@ -276,6 +294,7 @@ final class RedisServer
         $this->eventLoop->removeWritable($connection->socket());
         $this->connections->remove($connection);
         $this->channels->unsubscribeAll($connection);
+        $this->transactions->discard($connection);
         $connection->close();
     }
 }

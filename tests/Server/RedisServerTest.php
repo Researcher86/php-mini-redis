@@ -416,6 +416,70 @@ final class RedisServerTest extends TestCase
         }
     }
 
+    public function testMultiQueuesCommandsAndExecRunsThemInOrder(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), $loop);
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+            $server->acceptClient(5);
+
+            fwrite($client, "*1\r\n\$5\r\nMULTI\r\n");
+            $loop->tick(1);
+            self::assertSame("+OK\r\n", fread($client, 1024));
+
+            fwrite($client, "*3\r\n\$3\r\nSET\r\n\$3\r\nfoo\r\n\$3\r\nbar\r\n");
+            $loop->tick(1);
+            self::assertSame("+QUEUED\r\n", fread($client, 1024));
+
+            fwrite($client, "*2\r\n\$3\r\nGET\r\n\$3\r\nfoo\r\n");
+            $loop->tick(1);
+            self::assertSame("+QUEUED\r\n", fread($client, 1024));
+
+            fwrite($client, "*1\r\n\$4\r\nEXEC\r\n");
+            $loop->tick(1);
+            self::assertSame("*2\r\n+OK\r\n\$3\r\nbar\r\n", fread($client, 1024));
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
+
+    public function testDiscardCancelsAQueuedTransaction(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), $loop);
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+            $server->acceptClient(5);
+
+            fwrite($client, "*1\r\n\$5\r\nMULTI\r\n");
+            $loop->tick(1);
+            fread($client, 1024);
+
+            fwrite($client, "*3\r\n\$3\r\nSET\r\n\$3\r\nfoo\r\n\$3\r\nbar\r\n");
+            $loop->tick(1);
+            fread($client, 1024);
+
+            fwrite($client, "*1\r\n\$7\r\nDISCARD\r\n");
+            $loop->tick(1);
+            self::assertSame("+OK\r\n", fread($client, 1024));
+
+            fwrite($client, "*2\r\n\$3\r\nGET\r\n\$3\r\nfoo\r\n");
+            $loop->tick(1);
+            self::assertSame("\$-1\r\n", fread($client, 1024));
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
+
     public function testAPartialWriteIsQueuedInTheWriteBufferInsteadOfBlocking(): void
     {
         $loop = new SelectLoop();

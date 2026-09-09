@@ -83,7 +83,7 @@ The project should remain:
 - [x] Phase 18 — Event Loop Timers
 - [x] Phase 19 — Connection Timeout
 - [x] Phase 20 — Pub/Sub
-- [ ] Phase 21 — Transactions
+- [x] Phase 21 — Transactions
 - [ ] Phase 22 — Persistence
 - [ ] Phase 23 — Graceful Shutdown
 - [ ] Phase 24 — Error Handling
