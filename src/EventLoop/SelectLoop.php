@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\EventLoop;
 
+use App\Support\Clock;
+use App\Support\SystemClock;
+
 /**
  * An EventLoop built on stream_select(), extended with timers so time -
  * not just I/O - can wake it up.
@@ -19,12 +22,9 @@ final class SelectLoop implements EventLoop
     private bool $running = false;
     private TimerManager $timers;
 
-    /** @var \Closure(): float */
-    private \Closure $clock;
-
-    public function __construct(?\Closure $clock = null)
-    {
-        $this->clock = $clock ?? static fn (): float => microtime(true);
+    public function __construct(
+        private readonly Clock $clock = new SystemClock(),
+    ) {
         $this->timers = new TimerManager();
     }
 
@@ -50,12 +50,12 @@ final class SelectLoop implements EventLoop
 
     public function every(float $intervalSeconds, callable $callback): Timer
     {
-        return $this->timers->every($intervalSeconds, $callback, ($this->clock)());
+        return $this->timers->every($intervalSeconds, $callback, $this->clock->now());
     }
 
     public function after(float $delaySeconds, callable $callback): Timer
     {
-        return $this->timers->after($delaySeconds, $callback, ($this->clock)());
+        return $this->timers->after($delaySeconds, $callback, $this->clock->now());
     }
 
     public function run(): void
@@ -81,14 +81,14 @@ final class SelectLoop implements EventLoop
         $read = array_map(static fn (array $entry) => $entry[0], $this->readListeners);
         $write = array_map(static fn (array $entry) => $entry[0], $this->writeListeners);
 
-        $wait = $this->shorterWait($timeoutSeconds, $this->timers->nextDueIn(($this->clock)()));
+        $wait = $this->shorterWait($timeoutSeconds, $this->timers->nextDueIn($this->clock->now()));
 
         if ($read === [] && $write === []) {
             if ($wait !== null) {
                 usleep((int) ($wait * 1_000_000));
             }
 
-            $this->timers->tick(($this->clock)());
+            $this->timers->tick($this->clock->now());
 
             return 0;
         }
@@ -99,7 +99,7 @@ final class SelectLoop implements EventLoop
 
         $ready = @stream_select($read, $write, $except, $seconds, $microseconds);
 
-        $this->timers->tick(($this->clock)());
+        $this->timers->tick($this->clock->now());
 
         if ($ready === false || $ready === 0) {
             return 0;

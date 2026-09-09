@@ -12,18 +12,16 @@ use App\Protocol\RespValue;
 use App\PubSub\ChannelRegistry;
 use App\Storage\Store;
 
-final class PublishCommand implements CommandHandler
+final readonly class PublishCommand implements CommandHandler
 {
-    private RespEncoder $encoder;
-
     /**
      * @param callable(ClientConnection, string): void $deliver Sends already-encoded bytes to a subscriber's connection.
      */
     public function __construct(
-        private readonly ChannelRegistry $channels,
-        private readonly mixed $deliver,
+        private ChannelRegistry $channels,
+        private mixed $deliver,
+        private RespEncoder $encoder = new RespEncoder(),
     ) {
-        $this->encoder = new RespEncoder();
     }
 
     public function handle(Command $command, Store $store, ClientConnection $connection): RespValue

@@ -12,11 +12,11 @@ use App\Protocol\RespValue;
 use App\Storage\Store;
 use App\Transaction\TransactionManager;
 
-final class ExecCommand implements CommandHandler
+final readonly class ExecCommand implements CommandHandler
 {
     public function __construct(
-        private readonly TransactionManager $transactions,
-        private readonly CommandDispatcher $dispatcher,
+        private TransactionManager $transactions,
+        private CommandDispatcher $dispatcher,
     ) {
     }
 

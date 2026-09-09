@@ -12,9 +12,9 @@ use App\Storage\InMemoryStore;
  * Optional, by design: the database is in-memory-only unless a snapshot
  * path is configured.
  */
-final class SnapshotStore
+final readonly class SnapshotStore
 {
-    public function __construct(private readonly string $path)
+    public function __construct(private string $path)
     {
     }
 

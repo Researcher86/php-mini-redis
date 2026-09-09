@@ -7,6 +7,7 @@ namespace App\Tests\Command\Handler;
 use App\Command\Command;
 use App\Command\Handler\PublishCommand;
 use App\Connection\ClientConnection;
+use App\Protocol\RespType;
 use App\Protocol\RespValue;
 use App\PubSub\ChannelRegistry;
 use App\Storage\InMemoryStore;
@@ -74,6 +75,6 @@ final class PublishCommandTest extends TestCase
 
         $result = $publish->handle($command, new InMemoryStore(), $this->createConnection());
 
-        self::assertSame(\App\Protocol\RespType::Error, $result->type);
+        self::assertSame(RespType::Error, $result->type);
     }
 }

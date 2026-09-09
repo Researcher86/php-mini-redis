@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Storage;
 
 use App\Storage\InMemoryStore;
+use App\Tests\Support\FakeClock;
 use PHPUnit\Framework\TestCase;
 
 final class InMemoryStoreTest extends TestCase
@@ -56,13 +57,11 @@ final class InMemoryStoreTest extends TestCase
 
     public function testAValueWithATtlIsAvailableBeforeItExpires(): void
     {
-        $now = 1000.0;
-        $store = new InMemoryStore(static function () use (&$now): float {
-            return $now;
-        });
+        $clock = new FakeClock(1000.0);
+        $store = new InMemoryStore($clock);
 
         $store->set('session', 'abc', ttlSeconds: 60);
-        $now += 59;
+        $clock->advance(59);
 
         self::assertSame('abc', $store->get('session'));
         self::assertTrue($store->has('session'));
@@ -70,13 +69,11 @@ final class InMemoryStoreTest extends TestCase
 
     public function testAValueWithATtlIsGoneOnceItExpires(): void
     {
-        $now = 1000.0;
-        $store = new InMemoryStore(static function () use (&$now): float {
-            return $now;
-        });
+        $clock = new FakeClock(1000.0);
+        $store = new InMemoryStore($clock);
 
         $store->set('session', 'abc', ttlSeconds: 60);
-        $now += 60;
+        $clock->advance(60);
 
         self::assertNull($store->get('session'));
         self::assertFalse($store->has('session'));
@@ -84,55 +81,47 @@ final class InMemoryStoreTest extends TestCase
 
     public function testDeleteReturnsFalseForAnExpiredKey(): void
     {
-        $now = 1000.0;
-        $store = new InMemoryStore(static function () use (&$now): float {
-            return $now;
-        });
+        $clock = new FakeClock(1000.0);
+        $store = new InMemoryStore($clock);
 
         $store->set('session', 'abc', ttlSeconds: 60);
-        $now += 60;
+        $clock->advance(60);
 
         self::assertFalse($store->delete('session'));
     }
 
     public function testSetWithoutATtlNeverExpires(): void
     {
-        $now = 1000.0;
-        $store = new InMemoryStore(static function () use (&$now): float {
-            return $now;
-        });
+        $clock = new FakeClock(1000.0);
+        $store = new InMemoryStore($clock);
 
         $store->set('name', 'Tanat');
-        $now += 1_000_000;
+        $clock->advance(1_000_000);
 
         self::assertSame('Tanat', $store->get('name'));
     }
 
     public function testOverwritingAKeyReplacesItsPreviousTtl(): void
     {
-        $now = 1000.0;
-        $store = new InMemoryStore(static function () use (&$now): float {
-            return $now;
-        });
+        $clock = new FakeClock(1000.0);
+        $store = new InMemoryStore($clock);
 
         $store->set('session', 'abc', ttlSeconds: 1);
         $store->set('session', 'def');
-        $now += 60;
+        $clock->advance(60);
 
         self::assertSame('def', $store->get('session'));
     }
 
     public function testSweepExpiredRemovesOnlyExpiredEntriesAndReportsHowMany(): void
     {
-        $now = 1000.0;
-        $store = new InMemoryStore(static function () use (&$now): float {
-            return $now;
-        });
+        $clock = new FakeClock(1000.0);
+        $store = new InMemoryStore($clock);
 
         $store->set('short', 'a', ttlSeconds: 10);
         $store->set('long', 'b', ttlSeconds: 100);
         $store->set('forever', 'c');
-        $now += 10;
+        $clock->advance(10);
 
         self::assertSame(1, $store->sweepExpired());
         self::assertFalse($store->has('short'));
@@ -143,10 +132,7 @@ final class InMemoryStoreTest extends TestCase
 
     public function testSnapshotAndRestoreRoundTripValuesAndTtls(): void
     {
-        $now = 1000.0;
-        $clock = static function () use (&$now): float {
-            return $now;
-        };
+        $clock = new FakeClock(1000.0);
         $store = new InMemoryStore($clock);
         $store->set('name', 'Tanat');
         $store->set('session', 'abc', ttlSeconds: 60);
@@ -159,7 +145,7 @@ final class InMemoryStoreTest extends TestCase
         self::assertSame('Tanat', $restored->get('name'));
         self::assertSame('abc', $restored->get('session'));
 
-        $now += 60;
+        $clock->advance(60);
         self::assertNull($restored->get('session'));
     }
 

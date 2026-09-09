@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Command;
 
-final class CommandException extends \RuntimeException
+use RuntimeException;
+
+final class CommandException extends RuntimeException
 {
 }

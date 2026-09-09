@@ -4,22 +4,22 @@ declare(strict_types=1);
 
 namespace App\Storage;
 
+use App\Support\Clock;
+use App\Support\SystemClock;
+
 final class InMemoryStore implements Store
 {
     /** @var array<string, StoredValue> */
     private array $data = [];
 
-    /** @var \Closure(): float */
-    private \Closure $clock;
-
-    public function __construct(?\Closure $clock = null)
-    {
-        $this->clock = $clock ?? static fn (): float => microtime(true);
+    public function __construct(
+        private readonly Clock $clock = new SystemClock(),
+    ) {
     }
 
     public function set(string $key, mixed $value, ?int $ttlSeconds = null): void
     {
-        $expiresAt = $ttlSeconds === null ? null : ($this->clock)() + $ttlSeconds;
+        $expiresAt = $ttlSeconds === null ? null : $this->clock->now() + $ttlSeconds;
         $this->data[$key] = new StoredValue($value, $expiresAt);
     }
 
@@ -48,7 +48,7 @@ final class InMemoryStore implements Store
 
     public function sweepExpired(): int
     {
-        $now = ($this->clock)();
+        $now = $this->clock->now();
         $removed = 0;
 
         foreach ($this->data as $key => $entry) {
@@ -105,7 +105,7 @@ final class InMemoryStore implements Store
             return null;
         }
 
-        if ($entry->isExpired(($this->clock)())) {
+        if ($entry->isExpired($this->clock->now())) {
             unset($this->data[$key]);
 
             return null;

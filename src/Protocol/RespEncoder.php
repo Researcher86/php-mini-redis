@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Protocol;
 
-final class RespEncoder
+final readonly class RespEncoder
 {
     public function encode(RespValue $value): string
     {

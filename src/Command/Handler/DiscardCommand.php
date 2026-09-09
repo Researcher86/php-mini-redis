@@ -11,9 +11,9 @@ use App\Protocol\RespValue;
 use App\Storage\Store;
 use App\Transaction\TransactionManager;
 
-final class DiscardCommand implements CommandHandler
+final readonly class DiscardCommand implements CommandHandler
 {
-    public function __construct(private readonly TransactionManager $transactions)
+    public function __construct(private TransactionManager $transactions)
     {
     }
 

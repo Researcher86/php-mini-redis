@@ -10,6 +10,7 @@ use App\Protocol\RespType;
 use App\Protocol\RespValue;
 use App\Storage\InMemoryStore;
 use App\Tests\Support\CreatesTestConnections;
+use App\Tests\Support\FakeClock;
 use PHPUnit\Framework\TestCase;
 
 final class SetCommandTest extends TestCase
@@ -46,10 +47,8 @@ final class SetCommandTest extends TestCase
 
     public function testStoresTheValueWithATtlWhenGivenEx(): void
     {
-        $now = 1000.0;
-        $store = new InMemoryStore(static function () use (&$now): float {
-            return $now;
-        });
+        $clock = new FakeClock(1000.0);
+        $store = new InMemoryStore($clock);
         $command = Command::fromRespValue(RespValue::array([
             RespValue::bulkString('SET'),
             RespValue::bulkString('session'),
@@ -63,7 +62,7 @@ final class SetCommandTest extends TestCase
         self::assertSame('OK', $result->value);
         self::assertSame('abc', $store->get('session'));
 
-        $now += 60;
+        $clock->advance(60);
         self::assertNull($store->get('session'));
     }
 

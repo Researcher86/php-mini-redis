@@ -8,7 +8,7 @@ namespace App\Logging;
  * Discards every message. Useful as a default when no logging is wanted,
  * e.g. in tests.
  */
-final class NullLogger implements Logger
+final readonly class NullLogger implements Logger
 {
     public function info(string $message): void
     {

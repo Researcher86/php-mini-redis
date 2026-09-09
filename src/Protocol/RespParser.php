@@ -11,7 +11,7 @@ namespace App\Protocol;
  * returns null - rather than failing - whenever the buffer does not yet
  * hold enough bytes.
  */
-final class RespParser
+final readonly class RespParser
 {
     /**
      * @return array{0: RespValue, 1: int}|null Null means more bytes are needed; the int is how many bytes were consumed.

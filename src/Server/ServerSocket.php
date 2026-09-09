@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace App\Server;
 
+use RuntimeException;
+
 /**
  * Wraps the raw listening socket: socket() + bind() + listen() + accept().
  */
-final class ServerSocket
+final readonly class ServerSocket
 {
     /** @var resource */
-    private $socket;
+    private mixed $socket;
 
     public function __construct(ServerConfig $config)
     {
@@ -27,7 +29,7 @@ final class ServerSocket
         );
 
         if ($socket === false) {
-            throw new \RuntimeException(sprintf('Failed to bind to %s:%d: %s (%d)', $config->host, $config->port, $errstr, $errno));
+            throw new RuntimeException(sprintf('Failed to bind to %s:%d: %s (%d)', $config->host, $config->port, $errstr, $errno));
         }
 
         $this->socket = $socket;
@@ -44,7 +46,7 @@ final class ServerSocket
         $address = stream_socket_get_name($this->socket, false);
 
         if ($address === false) {
-            throw new \RuntimeException('Failed to read the local socket address.');
+            throw new RuntimeException('Failed to read the local socket address.');
         }
 
         return $address;

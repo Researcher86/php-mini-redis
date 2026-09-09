@@ -6,6 +6,7 @@ namespace App\Tests\Persistence;
 
 use App\Persistence\SnapshotStore;
 use App\Storage\InMemoryStore;
+use App\Tests\Support\FakeClock;
 use PHPUnit\Framework\TestCase;
 
 final class SnapshotStoreTest extends TestCase
@@ -52,10 +53,7 @@ final class SnapshotStoreTest extends TestCase
 
     public function testATtlSurvivesTheRoundTrip(): void
     {
-        $now = 1000.0;
-        $clock = static function () use (&$now): float {
-            return $now;
-        };
+        $clock = new FakeClock(1000.0);
         $snapshots = new SnapshotStore($this->path);
         $original = new InMemoryStore($clock);
         $original->set('session', 'abc', ttlSeconds: 60);
@@ -67,7 +65,7 @@ final class SnapshotStoreTest extends TestCase
 
         self::assertSame('abc', $restored->get('session'));
 
-        $now += 60;
+        $clock->advance(60);
         self::assertNull($restored->get('session'));
     }
 

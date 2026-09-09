@@ -11,9 +11,9 @@ use App\Protocol\RespValue;
 use App\PubSub\ChannelRegistry;
 use App\Storage\Store;
 
-final class SubscribeCommand implements CommandHandler
+final readonly class SubscribeCommand implements CommandHandler
 {
-    public function __construct(private readonly ChannelRegistry $channels)
+    public function __construct(private ChannelRegistry $channels)
     {
     }
 

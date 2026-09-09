@@ -6,6 +6,7 @@ namespace App\Tests\Command\Handler;
 
 use App\Command\Command;
 use App\Command\Handler\DelCommand;
+use App\Protocol\RespType;
 use App\Protocol\RespValue;
 use App\Storage\InMemoryStore;
 use App\Tests\Support\CreatesTestConnections;
@@ -40,6 +41,6 @@ final class DelCommandTest extends TestCase
 
         $result = (new DelCommand())->handle($command, new InMemoryStore(), $this->createConnection());
 
-        self::assertSame(\App\Protocol\RespType::Error, $result->type);
+        self::assertSame(RespType::Error, $result->type);
     }
 }

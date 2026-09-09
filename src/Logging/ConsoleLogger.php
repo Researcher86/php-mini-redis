@@ -7,7 +7,7 @@ namespace App\Logging;
 /**
  * Writes info/warning to stdout and errors to stderr.
  */
-final class ConsoleLogger implements Logger
+final readonly class ConsoleLogger implements Logger
 {
     /** @var resource */
     private mixed $stdout;

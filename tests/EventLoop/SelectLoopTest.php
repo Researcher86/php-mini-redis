@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\EventLoop;
 
 use App\EventLoop\SelectLoop;
+use App\Tests\Support\FakeClock;
 use PHPUnit\Framework\TestCase;
 
 final class SelectLoopTest extends TestCase
@@ -93,21 +94,19 @@ final class SelectLoopTest extends TestCase
 
     public function testEveryFiresARepeatingTimerEvenWithoutAnyStreams(): void
     {
-        $now = 1000.0;
-        $loop = new SelectLoop(static function () use (&$now): float {
-            return $now;
-        });
+        $clock = new FakeClock(1000.0);
+        $loop = new SelectLoop($clock);
 
         $fired = 0;
         $loop->every(0.01, function () use (&$fired): void {
             $fired++;
         });
 
-        $now += 0.01;
+        $clock->advance(0.01);
         self::assertSame(0, $loop->tick(0));
         self::assertSame(1, $fired);
 
-        $now += 0.01;
+        $clock->advance(0.01);
         $loop->tick(0);
         self::assertSame(2, $fired);
     }
@@ -115,10 +114,8 @@ final class SelectLoopTest extends TestCase
     public function testATimerFiresAlongsideStreamActivity(): void
     {
         [$a, $b] = $this->pairOfSockets();
-        $now = 1000.0;
-        $loop = new SelectLoop(static function () use (&$now): float {
-            return $now;
-        });
+        $clock = new FakeClock(1000.0);
+        $loop = new SelectLoop($clock);
 
         $timerFired = false;
         $loop->after(0.01, function () use (&$timerFired): void {
@@ -131,7 +128,7 @@ final class SelectLoopTest extends TestCase
         });
 
         fwrite($b, 'PING');
-        $now += 0.01;
+        $clock->advance(0.01);
         $loop->tick(1);
 
         self::assertSame('PING', $received);

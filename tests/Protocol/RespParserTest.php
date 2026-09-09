@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Protocol;
 
+use App\Protocol\RespEncoder;
 use App\Protocol\RespParser;
 use App\Protocol\RespType;
 use App\Protocol\RespValue;
@@ -125,7 +126,7 @@ final class RespParserTest extends TestCase
     public function testRoundTripsThroughTheEncoder(): void
     {
         $parser = new RespParser();
-        $encoder = new \App\Protocol\RespEncoder();
+        $encoder = new RespEncoder();
 
         $original = RespValue::array([
             RespValue::bulkString('SET'),

@@ -6,6 +6,7 @@ namespace App\Tests\Command\Handler;
 
 use App\Command\Command;
 use App\Command\Handler\ExistsCommand;
+use App\Protocol\RespType;
 use App\Protocol\RespValue;
 use App\Storage\InMemoryStore;
 use App\Tests\Support\CreatesTestConnections;
@@ -37,6 +38,6 @@ final class ExistsCommandTest extends TestCase
 
         $result = (new ExistsCommand())->handle($command, new InMemoryStore(), $this->createConnection());
 
-        self::assertSame(\App\Protocol\RespType::Error, $result->type);
+        self::assertSame(RespType::Error, $result->type);
     }
 }

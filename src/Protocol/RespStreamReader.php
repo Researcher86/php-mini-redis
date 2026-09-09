@@ -11,9 +11,9 @@ namespace App\Protocol;
  * A single TCP read may contain zero, one, or several values, and the
  * buffer keeps growing across reads until each value is fully there.
  */
-final class RespStreamReader
+final readonly class RespStreamReader
 {
-    public function __construct(private readonly RespParser $parser = new RespParser())
+    public function __construct(private RespParser $parser = new RespParser())
     {
     }
 

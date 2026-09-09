@@ -10,7 +10,9 @@ use App\EventLoop\SelectLoop;
 use App\Server\RedisServer;
 use App\Server\ServerConfig;
 use App\Storage\InMemoryStore;
+use App\Tests\Support\FakeClock;
 use PHPUnit\Framework\TestCase;
+use ReflectionProperty;
 
 final class RedisServerTest extends TestCase
 {
@@ -245,10 +247,8 @@ final class RedisServerTest extends TestCase
     public function testAKeySetWithExExpiresAfterItsTtl(): void
     {
         $loop = new SelectLoop();
-        $now = 1000.0;
-        $store = new InMemoryStore(static function () use (&$now): float {
-            return $now;
-        });
+        $clock = new FakeClock(1000.0);
+        $store = new InMemoryStore($clock);
         $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), $loop, store: $store);
 
         try {
@@ -264,7 +264,7 @@ final class RedisServerTest extends TestCase
             $loop->tick(1);
             self::assertSame("\$3\r\nabc\r\n", fread($client, 1024));
 
-            $now += 60;
+            $clock->advance(60);
 
             fwrite($client, "*2\r\n\$3\r\nGET\r\n\$7\r\nsession\r\n");
             $loop->tick(1);
@@ -278,10 +278,7 @@ final class RedisServerTest extends TestCase
 
     public function testExpiredKeysAreActivelyRemovedByTheSweepTimerWithoutBeingRead(): void
     {
-        $now = 1000.0;
-        $clock = static function () use (&$now): float {
-            return $now;
-        };
+        $clock = new FakeClock(1000.0);
         $loop = new SelectLoop($clock);
         $store = new InMemoryStore($clock);
         $server = new RedisServer(
@@ -297,14 +294,14 @@ final class RedisServerTest extends TestCase
             // Read the raw entries directly, instead of through has()/get(),
             // which would themselves lazily expire the key - the point here
             // is to prove the timer removes it without ever being read.
-            $entries = new \ReflectionProperty($store, 'data');
+            $entries = new ReflectionProperty($store, 'data');
             self::assertArrayHasKey('session', $entries->getValue($store));
 
-            $now += 5;
+            $clock->advance(5);
             $loop->tick(0);
             self::assertArrayHasKey('session', $entries->getValue($store), 'Not due yet: the TTL has not elapsed.');
 
-            $now += 5;
+            $clock->advance(5);
             $loop->tick(0);
             self::assertArrayNotHasKey('session', $entries->getValue($store));
         } finally {
