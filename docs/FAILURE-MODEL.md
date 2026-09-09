@@ -70,8 +70,10 @@ do **not** disconnect - only a genuinely malformed protocol stream does.
 ## Backpressure pauses reading, not the connection itself
 
 A connection whose `WriteBuffer` grows past `maxWriteBufferBytes` stops
-being read from until it drains (see
-[PHASES.md](PHASES.md#phase-26--backpressure)) - but it is not
+being read from until it drains back below `lowWriteBufferBytes` (a
+quarter of the pause level by default; see
+[PHASES.md](PHASES.md#phase-26--backpressure) and
+[PHASES.md](PHASES.md#phase-32--highlow-watermarks)) - but it is not
 disconnected, and whatever it already queued keeps trying to flush
 regardless. A client that both never reads its responses *and* never
 stops sending new commands has its own commands ignored (paused) but its

@@ -902,9 +902,10 @@ bound.
       (`pauseReadingIfWriteBufferTooLarge()`) - its socket stays open and
       whatever it already queued keeps trying to flush, but nothing new is
       read from it
-* [x] Reading resumes once the WriteBuffer fully drains
-      (`resumeReadingIfPaused()`, called from `flushWriteBuffer()`'s
-      already-existing empty-buffer branch)
+* [x] Reading resumes once the WriteBuffer drains back below the low
+      watermark (`resumeReadingIfPaused()`, called from
+      `flushWriteBuffer()`'s low-watermark branch, which subsumes the
+      original empty-buffer branch; refined in Phase 32)
 * [x] Applies uniformly to every source of a queued response - a normal
       command reply, a too-many-arguments error, and a Pub/Sub message
       delivered to a subscriber - via one shared `queueForWrite()`
@@ -1132,6 +1133,51 @@ command layer sees the value.
 * the existing `RespParserTest` and `RespStreamReaderTest` suites still
   pass unchanged, which is what pins the strictness to the *grammar*
   rather than changing valid inputs' behavior
+
+---
+
+# Phase 32 — High/Low Watermarks
+
+## Goal
+
+Phase 26 paused reading at a single threshold and only resumed once the
+backlog had fully drained. A slow reader that kept trickling progress
+would therefore oscillate at the boundary: its buffer fills past the cap
+and it is paused, it drains a little and is resumed, it fills again and
+is paused anew. Give the backpressure hysteresis - a high watermark where
+reading pauses and a lower one where it resumes - so a connection that
+has caught up enough is let back in without waiting for a complete drain.
+
+## Tasks
+
+* [x] `lowWriteBufferBytes` - reading resumes once the queued backlog
+      drains to this level, *while bytes are still queued*, instead of
+      waiting for an empty buffer
+* [x] Default is a quarter of the pause level, so the out-of-the-box
+      behavior is "pause at 16 MiB, resume at 4 MiB"
+* [x] The resumed connection keeps its writable listener until the
+      buffer fully empties - the tail of the backlog still flushes, and
+      a fresh burst of responses can re-pause it by crossing the high
+      watermark again
+
+## Definition of Done
+
+A connection paused by a slow reader resumes as soon as its backlog
+crosses below the low watermark, without the server having to wait for
+the buffer to hit zero - observable as its previously-paused commands
+being processed while response bytes are still queued.
+
+## Tests
+
+* `RedisServerTest::testASlowReaderResumesWhenItsWriteBufferHitsTheLowWatermark` -
+  a 20 MB response pauses a 16 MiB-cap connection; the backlog is drained
+  to 6 MiB, the client catches up in megabyte chunks until the queue
+  crosses the 4 MiB resumption level (still holding bytes), and the
+  command sent while paused is then processed - all while the WriteBuffer
+  is never empty
+* `RedisServerTest::testASlowReaderIsPausedThenResumedOnceItsWriteBufferDrains`
+  (Phase 26) still passes unchanged - an empty-buffer resume remains a
+  special case of the low-watermark rule
 
 ---
 

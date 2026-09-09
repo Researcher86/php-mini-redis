@@ -56,6 +56,7 @@ final class RedisServer
     private TransactionManager $transactions;
     private ?SnapshotStore $snapshots;
     private ServerMetrics $metrics;
+    private int $lowWriteBufferBytes;
     private bool $shuttingDown = false;
 
     /** @var array<int, true> Connection ids currently paused for reading. */
@@ -85,9 +86,17 @@ final class RedisServer
         // How much a connection's WriteBuffer may hold before reading from
         // it is paused - a slow reader (or one that never reads at all)
         // must not let responses queue up without bound while its socket
-        // stays open. Reading resumes once the buffer fully drains.
+        // stays open. Reading resumes once the backlog drains to
+        // $lowWriteBufferBytes (a quarter of this level by default).
         private readonly int $maxWriteBufferBytes = 16 * 1024 * 1024,
+        // Hysteresis: a paused connection stays paused until its backlog
+        // drains below this, not just under the pause level - otherwise a
+        // slow reader that slowly catches up then falls behind again would
+        // be paused and resumed on every tick. Defaults to a quarter of
+        // $maxWriteBufferBytes (e.g. pause at 16 MB, resume at 4 MB).
+        ?int $lowWriteBufferBytes = null,
     ) {
+        $this->lowWriteBufferBytes = $lowWriteBufferBytes ?? max(1, intdiv($this->maxWriteBufferBytes, 4));
         $this->socket = new ServerSocket($config);
         $this->connections = new ConnectionManager();
         $this->eventLoop = $eventLoop ?? new SelectLoop();
@@ -427,6 +436,17 @@ final class RedisServer
             return;
         }
 
+        // Backlog drained to the low watermark: the reader has caught up
+        // far enough to be let back in, even though there is still some
+        // of the response queued. The writable listener below stays in
+        // place until the buffer fully empties.
+        if (
+            isset($this->pausedConnections[$connection->id()])
+            && $buffer->length() <= $this->lowWriteBufferBytes
+        ) {
+            $this->resumeReadingIfPaused($connection);
+        }
+
         $this->eventLoop->onWritable($connection->socket(), function () use ($connection): void {
             $this->flushWriteBuffer($connection);
         });
@@ -436,8 +456,8 @@ final class RedisServer
      * Backpressure: a connection whose queued WriteBuffer is over the
      * limit stops being read from - a slow or absent reader must not be
      * allowed to make the server buffer an unbounded amount of its own
-     * responses in memory. Reading resumes once the buffer fully drains
-     * (see flushWriteBuffer()).
+     * responses in memory. Reading resumes once the buffer drains below
+     * the low watermark (see flushWriteBuffer()).
      */
     private function pauseReadingIfWriteBufferTooLarge(ClientConnection $connection): void
     {

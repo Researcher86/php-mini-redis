@@ -873,6 +873,63 @@ final class RedisServerTest extends TestCase
         }
     }
 
+    public function testASlowReaderResumesWhenItsWriteBufferHitsTheLowWatermark(): void
+    {
+        $loop = new SelectLoop();
+        // Pause at 16 MB, but resume once the backlog drains to 4 MB - and
+        // critically while bytes are still queued, not only once it empties.
+        $server = new RedisServer(
+            new ServerConfig(host: '127.0.0.1', port: 0),
+            $loop,
+            maxWriteBufferBytes: 16 * 1024 * 1024,
+            lowWriteBufferBytes: 4 * 1024 * 1024,
+        );
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+            stream_set_chunk_size($client, 1024 * 1024);
+            $connection = $server->acceptClient(5);
+            self::assertInstanceOf(ClientConnection::class, $connection);
+
+            $server->store()->set('big', str_repeat('x', 20 * 1024 * 1024));
+            fwrite($client, "*2\r\n\$3\r\nGET\r\n\$3\r\nbig\r\n");
+            $loop->tick(1);
+            self::assertGreaterThan(16 * 1024 * 1024, $connection->writeBuffer()->length());
+
+            fwrite($client, "*3\r\n\$3\r\nSET\r\n\$6\r\nmarker\r\n\$4\r\ndone\r\n");
+            $loop->tick(0.1);
+            self::assertSame(0, $connection->readBuffer()->length());
+            self::assertNull($server->store()->get('marker'));
+
+            // Drain the backlog down to 6 MB - below the 16 MB pause level
+            // but above the 4 MB resumption level - so the connection is
+            // still paused when the loop resumes.
+            $connection->writeBuffer()->consume($connection->writeBuffer()->length() - 6 * 1024 * 1024);
+
+            // Let the client catch up in megabyte chunks. Each writable event
+            // flushes a large slice of the backlog but leaves it well above
+            // empty; the moment it crosses 4 MB the connection resumes while
+            // megabytes are still queued.
+            for ($i = 0; $i < 20 && $connection->writeBuffer()->length() > 4 * 1024 * 1024; $i++) {
+                fread($client, 1024 * 1024);
+                $loop->tick(0.2);
+            }
+
+            self::assertLessThanOrEqual(4 * 1024 * 1024, $connection->writeBuffer()->length());
+            self::assertGreaterThan(0, $connection->writeBuffer()->length());
+
+            // Resumed at the low watermark while bytes are still queued: the
+            // SET sent while paused is now read and applied.
+            $loop->tick(1);
+            self::assertSame('done', $server->store()->get('marker'));
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
+
     public function testMetricsTrackRealTrafficAndInfoReportsThem(): void
     {
         $loop = new SelectLoop();
