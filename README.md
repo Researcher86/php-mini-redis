@@ -66,9 +66,10 @@ reply printed to stdout. It exists to make this demo runnable without
 | **Persistence** | optional snapshot to disk, reloaded on startup - in-memory-only unless configured |
 | **Graceful shutdown** | `SIGTERM`/`SIGINT` stop new connections and drain existing ones before exiting |
 | **Limits** | capped read buffer size, arguments per command, and connection count - each replies with a RESP error instead of growing unbounded |
+| **Backpressure** | a slow reader's write buffer is capped - reading from it pauses until it drains, instead of growing unbounded |
 
-Still ahead: backpressure, metrics - see [docs/PHASES.md](docs/PHASES.md)
-for what each one means and where it stands.
+Still ahead: metrics - see [docs/PHASES.md](docs/PHASES.md) for what that
+means and where it stands.
 
 ---
 

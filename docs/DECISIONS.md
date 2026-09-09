@@ -160,3 +160,23 @@ repository's own `README.md` describes as part of the same series.
 Corrected to `php-mini-redis` once noticed; `docker compose exec php ...`
 was unaffected throughout, since compose addresses a service by its
 `services:` key (`php`), not by `container_name`.
+
+## `fread()`'s default chunk size, found writing the backpressure test
+
+Testing Phase 26's resume path needs a client that reads back several
+hundred KB to free enough of the kernel's own send buffer for the server's
+socket to report writable again (small reads leave it saturated
+indefinitely - see the phase's own test for why). The first attempt at
+that test looped calling `fread($client, 1024 * 1024)`, expecting each
+call to return up to a megabyte - it returned exactly 8192 bytes every
+time, needing roughly 150 iterations instead of 3 to free enough space,
+which is exactly the kind of slow, many-iteration drain this project's own
+Phase 13 test had already gone out of its way to avoid.
+
+The cause: a PHP stream has its own internal chunk size (8192 bytes by
+default) that caps how much of a single `fread()` request is actually
+satisfied, independent of the length asked for. `stream_set_chunk_size($client,
+1024 * 1024)`, called once up front, removes that ceiling; the same drain
+then converges in 2-3 iterations. Worth remembering anywhere a test (or
+real client) needs to read back a large amount of data in bounded reads
+rather than one line at a time.

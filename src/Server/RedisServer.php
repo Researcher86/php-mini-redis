@@ -56,6 +56,9 @@ final class RedisServer
     private ?SnapshotStore $snapshots;
     private bool $shuttingDown = false;
 
+    /** @var array<int, true> Connection ids currently paused for reading. */
+    private array $pausedConnections = [];
+
     public function __construct(
         ServerConfig $config,
         ?EventLoop $eventLoop = null,
@@ -77,6 +80,11 @@ final class RedisServer
         private readonly int $maxArgumentsPerCommand = 1024,
         // Null means unbounded.
         private readonly ?int $maxConnections = null,
+        // How much a connection's WriteBuffer may hold before reading from
+        // it is paused - a slow reader (or one that never reads at all)
+        // must not let responses queue up without bound while its socket
+        // stays open. Reading resumes once the buffer fully drains.
+        private readonly int $maxWriteBufferBytes = 16 * 1024 * 1024,
     ) {
         $this->socket = new ServerSocket($config);
         $this->connections = new ConnectionManager();
@@ -101,8 +109,7 @@ final class RedisServer
         $this->dispatcher->register('PUBLISH', new PublishCommand(
             $this->channels,
             function (ClientConnection $subscriber, string $payload): void {
-                $subscriber->appendToWriteBuffer($payload);
-                $this->flushWriteBuffer($subscriber);
+                $this->queueForWrite($subscriber, $payload);
             },
         ));
 
@@ -333,8 +340,7 @@ final class RedisServer
 
         if ($value->type === RespType::Array && is_array($value->value) && count($value->value) > $this->maxArgumentsPerCommand) {
             $connection->setState(ConnectionState::Writing);
-            $connection->appendToWriteBuffer($this->encoder->encode(RespValue::error('ERR too many arguments')));
-            $this->flushWriteBuffer($connection);
+            $this->queueForWrite($connection, $this->encoder->encode(RespValue::error('ERR too many arguments')));
 
             return;
         }
@@ -353,8 +359,19 @@ final class RedisServer
         }
 
         $connection->setState(ConnectionState::Writing);
-        $connection->appendToWriteBuffer($this->encoder->encode($result));
+        $this->queueForWrite($connection, $this->encoder->encode($result));
+    }
+
+    /**
+     * Appends $bytes to the connection's WriteBuffer, flushes as much as
+     * the socket accepts right now, and pauses reading from it if what is
+     * left queued is over the backpressure limit.
+     */
+    private function queueForWrite(ClientConnection $connection, string $bytes): void
+    {
+        $connection->appendToWriteBuffer($bytes);
         $this->flushWriteBuffer($connection);
+        $this->pauseReadingIfWriteBufferTooLarge($connection);
     }
 
     /**
@@ -385,6 +402,7 @@ final class RedisServer
         if ($buffer->isEmpty()) {
             $this->eventLoop->removeWritable($connection->socket());
             $connection->setState(ConnectionState::Reading);
+            $this->resumeReadingIfPaused($connection);
 
             return;
         }
@@ -392,6 +410,37 @@ final class RedisServer
         $this->eventLoop->onWritable($connection->socket(), function () use ($connection): void {
             $this->flushWriteBuffer($connection);
         });
+    }
+
+    /**
+     * Backpressure: a connection whose queued WriteBuffer is over the
+     * limit stops being read from - a slow or absent reader must not be
+     * allowed to make the server buffer an unbounded amount of its own
+     * responses in memory. Reading resumes once the buffer fully drains
+     * (see flushWriteBuffer()).
+     */
+    private function pauseReadingIfWriteBufferTooLarge(ClientConnection $connection): void
+    {
+        if ($connection->writeBuffer()->length() <= $this->maxWriteBufferBytes) {
+            return;
+        }
+
+        if (isset($this->pausedConnections[$connection->id()])) {
+            return;
+        }
+
+        $this->pausedConnections[$connection->id()] = true;
+        $this->eventLoop->removeReadable($connection->socket());
+    }
+
+    private function resumeReadingIfPaused(ClientConnection $connection): void
+    {
+        if (!isset($this->pausedConnections[$connection->id()])) {
+            return;
+        }
+
+        unset($this->pausedConnections[$connection->id()]);
+        $this->watchForIncomingData($connection);
     }
 
     /**
@@ -427,6 +476,7 @@ final class RedisServer
         $this->connections->remove($connection);
         $this->channels->unsubscribeAll($connection);
         $this->transactions->discard($connection);
+        unset($this->pausedConnections[$connection->id()]);
         $connection->close();
     }
 }

@@ -778,4 +778,70 @@ final class RedisServerTest extends TestCase
             $server->stop();
         }
     }
+
+    public function testASlowReaderIsPausedThenResumedOnceItsWriteBufferDrains(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(
+            new ServerConfig(host: '127.0.0.1', port: 0),
+            $loop,
+            maxWriteBufferBytes: 1000,
+        );
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+            // fread()'s default chunk size (8192 bytes) would otherwise
+            // cap every read below, making the drain loop below need far
+            // more than a handful of iterations to free enough of the
+            // kernel's own send buffer for it to report writable again.
+            stream_set_chunk_size($client, 1024 * 1024);
+            $connection = $server->acceptClient(5);
+            self::assertInstanceOf(ClientConnection::class, $connection);
+
+            // Large enough that the client (never read from below) cannot
+            // possibly drain it in one fwrite(), leaving well over the 1000
+            // byte limit queued - see the write-buffer test above for the
+            // same technique.
+            $server->store()->set('big', str_repeat('x', 8 * 1024 * 1024));
+            fwrite($client, "*2\r\n\$3\r\nGET\r\n\$3\r\nbig\r\n");
+            $loop->tick(1);
+            self::assertGreaterThan(1000, $connection->writeBuffer()->length());
+
+            // Paused: bytes sent from here on are never read into the
+            // connection's ReadBuffer at all, since its readable listener
+            // was removed. A command whose effect can be checked directly
+            // against the store, rather than by reading its reply back off
+            // a socket that still has megabytes of the GET response ahead
+            // of it in the stream.
+            fwrite($client, "*3\r\n\$3\r\nSET\r\n\$6\r\nmarker\r\n\$4\r\ndone\r\n");
+            $loop->tick(0.1);
+            self::assertSame(0, $connection->readBuffer()->length());
+            self::assertNull($server->store()->get('marker'));
+
+            // Simulate the client having caught up: trim the backlog down
+            // to a handful of bytes that a real write can trivially finish,
+            // rather than actually reading all several megabytes back on
+            // this socket. The socket itself still won't report writable,
+            // though, until enough of what is already sitting in the
+            // kernel's send buffer has actually been read and acknowledged
+            // - a handful of bounded reads gets there.
+            $connection->writeBuffer()->consume($connection->writeBuffer()->length() - 5);
+
+            for ($i = 0; $i < 10 && !$connection->writeBuffer()->isEmpty(); $i++) {
+                fread($client, 1024 * 1024);
+                $loop->tick(0.2);
+            }
+
+            self::assertTrue($connection->writeBuffer()->isEmpty());
+
+            // Resumed: the SET queued above is now read and applied.
+            $loop->tick(1);
+            self::assertSame('done', $server->store()->get('marker'));
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
 }

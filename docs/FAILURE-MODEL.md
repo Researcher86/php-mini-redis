@@ -67,14 +67,17 @@ Command-level errors (wrong argument count, non-integer `INCR` target, an
 unregistered command name) reply with a proper `-ERR ...` RESP error and
 do **not** disconnect - only a genuinely malformed protocol stream does.
 
-## No backpressure yet (Phase 26)
+## Backpressure pauses reading, not the connection itself
 
-`WriteBuffer` queues an unbounded amount of data if a client reads slower
-than the server produces responses (see Phase 13). Nothing currently caps
-its size or pauses reading from a slow client - a single very large
-response, or a client that never reads at all, grows that connection's
-`WriteBuffer` without limit until Phase 26 adds a cap. Until then, a
-pathological client is a real, if narrow, memory-growth vector.
+A connection whose `WriteBuffer` grows past `maxWriteBufferBytes` stops
+being read from until it drains (see
+[PHASES.md](PHASES.md#phase-26--backpressure)) - but it is not
+disconnected, and whatever it already queued keeps trying to flush
+regardless. A client that both never reads its responses *and* never
+stops sending new commands has its own commands ignored (paused) but its
+socket stays open indefinitely; nothing currently times out a connection
+stuck in the paused state specifically (Phase 19's idle timeout is based
+on last activity, and a socket mid-flush still counts as active).
 
 ## Resource limits are capped, but coarse
 

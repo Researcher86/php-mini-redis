@@ -96,7 +96,7 @@ one test answers for one line of the plan. The whole suite runs with
 - [x] Phase 23 — Graceful Shutdown
 - [x] Phase 24 — Error Handling
 - [x] Phase 25 — Limits
-- [ ] Phase 26 — Backpressure
+- [x] Phase 26 — Backpressure
 - [ ] Phase 27 — Metrics
 - [ ] Phase 28 — Tests
 - [ ] Phase 29 — Benchmarks
@@ -898,9 +898,35 @@ bound.
 
 ## Tasks
 
-* [ ] Cap the write buffer size
-* [ ] Pause reading from a client whose write buffer is over the cap
-* [ ] Resume once it drains
+* [x] `maxWriteBufferBytes` (default 16 MiB) caps how much a connection's
+      WriteBuffer may hold
+* [x] A connection over the cap stops being read from
+      (`pauseReadingIfWriteBufferTooLarge()`) - its socket stays open and
+      whatever it already queued keeps trying to flush, but nothing new is
+      read from it
+* [x] Reading resumes once the WriteBuffer fully drains
+      (`resumeReadingIfPaused()`, called from `flushWriteBuffer()`'s
+      already-existing empty-buffer branch)
+* [x] Applies uniformly to every source of a queued response - a normal
+      command reply, a too-many-arguments error, and a Pub/Sub message
+      delivered to a subscriber - via one shared `queueForWrite()`
+
+## Definition of Done
+
+A client that never reads its socket gets paused instead of letting the
+server buffer its responses without bound, and resumes automatically once
+its backlog is gone - proven against the connection's actual queued byte
+count and the store's own state, not by timing.
+
+## Tests
+
+- [tests/Server/RedisServerTest.php](../tests/Server/RedisServerTest.php) -
+  `testASlowReaderIsPausedThenResumedOnceItsWriteBufferDrains`: an 8 MB
+  response overflows a 1000-byte limit, a command sent while paused is
+  never read into the connection's buffer at all, and once the backlog is
+  gone (verified via the connection's own `WriteBuffer`, not by re-reading
+  the noisy socket stream) the paused command is read and its effect shows
+  up in the store.
 
 ---
 
