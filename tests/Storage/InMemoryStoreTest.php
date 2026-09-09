@@ -7,6 +7,7 @@ namespace App\Tests\Storage;
 use App\Storage\InMemoryStore;
 use App\Tests\Support\FakeClock;
 use PHPUnit\Framework\TestCase;
+use ReflectionProperty;
 
 final class InMemoryStoreTest extends TestCase
 {
@@ -184,6 +185,47 @@ final class InMemoryStoreTest extends TestCase
         $clock->advance(10);
 
         self::assertSame(0, $store->sweepExpired());
+    }
+
+    public function testKeysThatCameAndWentLeaveNoPerKeyBookkeepingBehind(): void
+    {
+        $clock = new FakeClock(1000.0);
+        $store = new InMemoryStore($clock);
+
+        for ($i = 0; $i < 100; $i++) {
+            $store->set('expiring:' . $i, 'value', ttlSeconds: 1);
+            $store->set('deleted:' . $i, 'value', ttlSeconds: 1);
+            $store->delete('deleted:' . $i);
+        }
+
+        $store->set('read:0', 'value', ttlSeconds: 1);
+        $clock->advance(1);
+        self::assertNull($store->get('read:0')); // lazily expired on access
+        self::assertSame(100, $store->sweepExpired());
+
+        // A cache churning through short-lived keys must not accumulate one
+        // entry per key it has ever held - whichever of the three ways a key
+        // can leave took it away.
+        $versions = new ReflectionProperty($store, 'versions');
+        self::assertSame([], $versions->getValue($store));
+    }
+
+    public function testAKeyWrittenAgainAfterDeletionSurvivesItsPreviousTtl(): void
+    {
+        $clock = new FakeClock(1000.0);
+        $store = new InMemoryStore($clock);
+
+        // The first life queues a heap entry due at 1010. The second one is
+        // written at the same key with a longer TTL, so the entry that comes
+        // due first belongs to a value that no longer exists.
+        $store->set('session', 'first', ttlSeconds: 10);
+        $store->delete('session');
+        $store->set('session', 'second', ttlSeconds: 60);
+
+        $clock->advance(10);
+
+        self::assertSame(0, $store->sweepExpired());
+        self::assertSame('second', $store->get('session'));
     }
 
     public function testRestoreDropsEntriesAlreadyExpiredAtRestoreTime(): void

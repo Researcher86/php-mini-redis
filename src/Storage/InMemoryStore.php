@@ -22,13 +22,25 @@ final class InMemoryStore implements Store
     private \SplMinHeap $expirations;
 
     /**
-     * Per-key version, bumped on every set/delete. A heap entry is only
+     * The version each live key was last written at. A heap entry is only
      * applied when its recorded version still matches - so a key overwritten
      * (or deleted) since a heap push is never expired by that stale entry.
+     *
+     * A key that is gone is dropped from here rather than left behind at a
+     * bumped version: an entry per key ever written is an unbounded leak in
+     * a store whose whole point is that keys come and go, and a missing key
+     * fails the match just as well as a bumped one.
      *
      * @var array<string, int>
      */
     private array $versions = [];
+
+    /**
+     * Monotonic, store-wide rather than per-key: versions are never reused,
+     * so a key deleted and written again cannot land back on a version a
+     * heap entry from its previous life is still holding.
+     */
+    private int $lastVersion = 0;
 
     public function __construct(
         private readonly Clock $clock = new SystemClock(),
@@ -41,7 +53,7 @@ final class InMemoryStore implements Store
         $expiresAt = $ttlSeconds === null ? null : $this->clock->now() + $ttlSeconds;
         $this->data[$key] = new StoredValue($value, $expiresAt);
 
-        $version = ($this->versions[$key] ?? 0) + 1;
+        $version = ++$this->lastVersion;
         $this->versions[$key] = $version;
 
         if ($expiresAt !== null) {
@@ -67,8 +79,7 @@ final class InMemoryStore implements Store
             return false;
         }
 
-        $this->versions[$key] = ($this->versions[$key] ?? 0) + 1;
-        unset($this->data[$key]);
+        unset($this->data[$key], $this->versions[$key]);
 
         return true;
     }
@@ -98,7 +109,7 @@ final class InMemoryStore implements Store
                 && $entry->expiresAt === $expiresAt
                 && ($this->versions[$key] ?? 0) === $version
             ) {
-                unset($this->data[$key]);
+                unset($this->data[$key], $this->versions[$key]);
                 $removed++;
             }
         }
@@ -145,7 +156,7 @@ final class InMemoryStore implements Store
             $this->data[$key] = new StoredValue($entry['value'], $expiresAt);
 
             if ($expiresAt !== null) {
-                $version = ($this->versions[$key] ?? 0) + 1;
+                $version = ++$this->lastVersion;
                 $this->versions[$key] = $version;
                 $this->expirations->insert([$expiresAt, $version, $key]);
             }
@@ -165,7 +176,7 @@ final class InMemoryStore implements Store
         }
 
         if ($entry->isExpired($this->clock->now())) {
-            unset($this->data[$key]);
+            unset($this->data[$key], $this->versions[$key]);
 
             return null;
         }
