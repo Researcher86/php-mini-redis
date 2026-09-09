@@ -59,4 +59,23 @@ final class RedisServerTest extends TestCase
         self::assertSame(0, $server->connectedClientCount());
         self::assertSame(ConnectionState::Closed, $connection->state());
     }
+
+    public function testRunAcceptsClientsThroughTheEventLoop(): void
+    {
+        $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0));
+
+        $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+        self::assertIsResource($client, $errstr);
+
+        $accepted = null;
+        $server->run(function (ClientConnection $connection) use ($server, &$accepted): void {
+            $accepted = $connection;
+            $server->stop();
+        });
+
+        self::assertInstanceOf(ClientConnection::class, $accepted);
+        self::assertSame(ConnectionState::Closed, $accepted->state());
+
+        fclose($client);
+    }
 }

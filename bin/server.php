@@ -3,6 +3,7 @@
 
 declare(strict_types=1);
 
+use App\Connection\ClientConnection;
 use App\Server\RedisServer;
 use App\Server\ServerConfig;
 
@@ -15,10 +16,10 @@ $server = new RedisServer(new ServerConfig(host: $host, port: $port));
 
 fwrite(STDOUT, sprintf("Listening on %s\n", $server->localAddress()));
 
-// Phase 2: a blocking accept loop. Connections are accepted and tracked as
-// ClientConnection instances, but nothing is read from them yet - that
-// arrives in later phases.
-while (true) { // @phpstan-ignore while.alwaysTrue
-    $server->acceptClient();
+// Phase 3: the event loop accepts connections as they arrive, so this
+// process never blocks waiting on one particular client. Reading and
+// writing client data is not implemented yet - that arrives in later
+// phases.
+$server->run(function (ClientConnection $connection) use ($server): void {
     fwrite(STDOUT, sprintf("Client connected. Total: %d\n", $server->connectedClientCount()));
-}
+});

@@ -33,6 +33,12 @@ final class ServerSocket
         $this->socket = $socket;
     }
 
+    /** @return resource */
+    public function resource(): mixed
+    {
+        return $this->socket;
+    }
+
     public function localAddress(): string
     {
         $address = stream_socket_get_name($this->socket, false);
