@@ -1342,8 +1342,8 @@ The project is implemented incrementally.
 
 ## Phase 4 — RESP
 
-- [ ] Parser
-- [ ] Encoder
+- [x] Parser
+- [x] Encoder
 - [ ] Partial Requests
 
 ## Phase 5 — Commands

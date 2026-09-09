@@ -68,7 +68,7 @@ The project should remain:
 - [x] Phase 3 — Event Loop
 - [x] Phase 4 — Non-Blocking Sockets
 - [x] Phase 5 — Read Buffer
-- [ ] Phase 6 — Redis Protocol
+- [x] Phase 6 — Redis Protocol
 - [ ] Phase 7 — RESP Parser
 - [ ] Phase 8 — Command Model
 - [ ] Phase 9 — In-Memory Store
