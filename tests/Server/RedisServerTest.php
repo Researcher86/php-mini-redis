@@ -507,7 +507,7 @@ final class RedisServerTest extends TestCase
         }
     }
 
-    public function testMalformedInputDisconnectsOnlyThatClient(): void
+    public function testMalformedInputGetsARespErrorBeforeOnlyThatClientDisconnects(): void
     {
         $loop = new SelectLoop();
         $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), $loop);
@@ -521,6 +521,7 @@ final class RedisServerTest extends TestCase
             fwrite($client, "not resp at all\r\n");
             $loop->tick(1);
 
+            self::assertStringStartsWith('-ERR Protocol error:', fread($client, 1024));
             self::assertSame(0, $server->connectedClientCount());
             self::assertSame(ConnectionState::Closed, $connection->state());
 

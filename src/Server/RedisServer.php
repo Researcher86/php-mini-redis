@@ -278,11 +278,14 @@ final class RedisServer
     {
         try {
             [$values, $consumed] = $this->streamReader->readAll($connection->readBuffer()->contents());
-        } catch (ProtocolException) {
-            // Phase 24 will reply with a proper RESP error; for now a
-            // malformed stream simply ends the connection instead of
-            // taking the rest of the server down with it.
-            $this->disconnectClient($connection);
+        } catch (ProtocolException $exception) {
+            // Unlike a command-level error (wrong argument count, an
+            // unknown name), a desynced byte stream cannot be
+            // resynchronized - there is no reliable way to find the start
+            // of the next value once framing is lost. The client still
+            // gets a proper RESP error, the same as real Redis, before the
+            // connection closes.
+            $this->sendErrorAndDisconnect($connection, 'ERR Protocol error: ' . $exception->getMessage());
 
             return;
         }
@@ -368,6 +371,17 @@ final class RedisServer
                 $this->disconnectClient($connection);
             }
         }
+    }
+
+    /**
+     * Best-effort: the connection is being torn down immediately after, so
+     * this writes directly rather than queuing through WriteBuffer - there
+     * is no next tick left for a partial write to finish on.
+     */
+    private function sendErrorAndDisconnect(ClientConnection $connection, string $message): void
+    {
+        @fwrite($connection->socket(), $this->encoder->encode(RespValue::error($message)));
+        $this->disconnectClient($connection);
     }
 
     private function disconnectClient(ClientConnection $connection): void

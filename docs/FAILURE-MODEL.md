@@ -54,19 +54,18 @@ client-side retry after a dropped connection can still double-apply a
 non-idempotent command (`INCR`, for instance) for reasons entirely outside
 this server's control.
 
-## Protocol errors currently disconnect (interim, see DECISIONS.md)
+## A malformed protocol stream still ends the connection
 
-A byte stream that stops looking like RESP mid-parse
-(`ProtocolException`) closes that connection rather than replying with a
-RESP error. This is Phase 12's interim behavior, not Phase 24's finished
-one - see
-[DECISIONS.md](DECISIONS.md#malformed-input-disconnects-the-client-for-now)
-for why disconnecting was chosen over attempting to resynchronize.
+A byte stream that stops looking like RESP mid-parse (`ProtocolException`)
+gets a `-ERR Protocol error: ...` reply and then the connection closes -
+see
+[DECISIONS.md](DECISIONS.md#malformed-input-still-disconnects-but-with-a-resp-error-first)
+for why the connection still has to end (there is no reliable way to
+resynchronize a desynced stream) even though the client is now told why.
 
 Command-level errors (wrong argument count, non-integer `INCR` target, an
-unregistered command name) already reply with a proper `-ERR ...` RESP
-error and do **not** disconnect - only a genuinely malformed protocol
-stream does.
+unregistered command name) reply with a proper `-ERR ...` RESP error and
+do **not** disconnect - only a genuinely malformed protocol stream does.
 
 ## No backpressure yet (Phase 26)
 

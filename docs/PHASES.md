@@ -94,7 +94,7 @@ one test answers for one line of the plan. The whole suite runs with
 - [x] Phase 21 — Transactions
 - [x] Phase 22 — Persistence
 - [x] Phase 23 — Graceful Shutdown
-- [ ] Phase 24 — Error Handling
+- [x] Phase 24 — Error Handling
 - [ ] Phase 25 — Limits
 - [ ] Phase 26 — Backpressure
 - [ ] Phase 27 — Metrics
@@ -813,10 +813,38 @@ of the interim disconnect-on-malformed-input behavior from Phase 12.
 
 ## Tasks
 
-* [ ] Unknown command / wrong number of arguments / invalid integer as
-      proper RESP errors where possible
-* [ ] Decide, and document in DECISIONS.md, which protocol errors still
-      have to disconnect (a genuinely desynced stream cannot recover)
+* [x] Unknown command name → `-ERR unknown command '...'`
+      (`CommandDispatcher`, Phase 11)
+* [x] Wrong number of arguments → `-ERR wrong number of arguments for
+      '...' command` (every handler, Phase 10/16/20/21)
+* [x] Non-integer `INCR` target → `-ERR value is not an integer or out of
+      range` (`IncrCommand`, Phase 10)
+* [x] Malformed command shape (e.g. a non-array RESP value where a
+      command is expected) → `-ERR ...` (`Command::fromRespValue()` +
+      `CommandException`, caught in `RedisServer::executeValue()`)
+* [x] A malformed protocol stream (`ProtocolException`) now writes a
+      `-ERR Protocol error: ...` reply before disconnecting, instead of
+      disconnecting silently - see
+      [DECISIONS.md](DECISIONS.md#malformed-input-still-disconnects-but-with-a-resp-error-first)
+      for why it still has to disconnect
+
+## Definition of Done
+
+Every category of invalid client input gets an explicit RESP error; only a
+byte stream that is no longer parseable as RESP at all still ends the
+connection, and even that case is told why before it closes.
+
+## Tests
+
+- [tests/Command/CommandDispatcherTest.php](../tests/Command/CommandDispatcherTest.php) -
+  `testReturnsAnErrorForAnUnregisteredCommand`.
+- Every handler test's `testRejects*`/`testRejectsTheWrongNumberOfArguments`
+  case, e.g.
+  [IncrCommandTest::testRejectsANonIntegerValue](../tests/Command/Handler/IncrCommandTest.php).
+- [tests/Command/CommandTest.php](../tests/Command/CommandTest.php) - the
+  `testRejects*` cases for a malformed command shape.
+- [tests/Server/RedisServerTest.php](../tests/Server/RedisServerTest.php) -
+  `testMalformedInputGetsARespErrorBeforeOnlyThatClientDisconnects`.
 
 ---
 

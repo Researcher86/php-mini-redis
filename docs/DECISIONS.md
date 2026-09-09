@@ -78,17 +78,22 @@ shape between them.
 at all (an unrecognized type byte), which cannot be resolved by waiting for
 more bytes the way a merely-incomplete value can.
 
-## Malformed input disconnects the client (for now)
+## Malformed input still disconnects, but with a RESP error first
 
 A `ProtocolException` while parsing a connection's buffer
-(`RedisServer::processBufferedCommands()`) currently closes that
-connection rather than replying with a RESP error. This is called out
-explicitly as an interim behavior, not a final design: Phase 24 (Error
-Handling) is where protocol errors are meant to become proper `-ERR`
-replies. Disconnecting was chosen over doing nothing, because a
-genuinely-not-RESP byte stream cannot be resynchronized - there is no
-reliable way to find the start of the next value once framing is lost -
-so silently continuing to read would parse garbage as if it were valid.
+(`RedisServer::processBufferedCommands()`) writes a `-ERR Protocol
+error: ...` reply and then closes the connection
+(`sendErrorAndDisconnect()`), rather than either silently disconnecting
+(Phase 12's original interim behavior) or trying to keep the connection
+open. Real Redis does the same for the same reason: a genuinely-not-RESP
+byte stream cannot be resynchronized - there is no reliable way to find
+the start of the next value once framing is lost - so the connection
+still has to end, but the client is not left guessing why.
+
+The write is a direct, best-effort `fwrite()` rather than going through
+the normal `WriteBuffer`/writable-event machinery: the connection is
+torn down in the same call, so there is no next event loop tick left for
+a queued partial write to finish on.
 
 ## `SetCommand`'s `EX` option, not a generic options parser
 
