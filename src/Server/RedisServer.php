@@ -4,17 +4,28 @@ declare(strict_types=1);
 
 namespace App\Server;
 
+use App\Command\Command;
+use App\Command\CommandDispatcher;
+use App\Command\CommandException;
 use App\Connection\ClientConnection;
 use App\Connection\ConnectionManager;
 use App\Connection\ConnectionState;
 use App\EventLoop\EventLoop;
 use App\EventLoop\SelectLoop;
+use App\Protocol\ProtocolException;
+use App\Protocol\RespEncoder;
+use App\Protocol\RespStreamReader;
+use App\Protocol\RespValue;
+use App\Storage\InMemoryStore;
+use App\Storage\Store;
 
 /**
- * Phase 5: accepts TCP clients through an EventLoop and buffers whatever
- * they send, byte by byte, into each ClientConnection's ReadBuffer.
+ * Phase 12: accepts TCP clients through an EventLoop, parses complete RESP
+ * values out of each connection's ReadBuffer, dispatches them as commands
+ * against a Store, and writes the encoded result back.
  *
- * Parsing that buffer into commands is not implemented yet.
+ * Writes are not yet handled through a dedicated write buffer, so a large
+ * or slow-to-drain response is simply written in one go.
  */
 final class RedisServer
 {
@@ -23,17 +34,34 @@ final class RedisServer
     private ServerSocket $socket;
     private ConnectionManager $connections;
     private EventLoop $eventLoop;
+    private CommandDispatcher $dispatcher;
+    private Store $store;
+    private RespStreamReader $streamReader;
+    private RespEncoder $encoder;
 
-    public function __construct(ServerConfig $config, ?EventLoop $eventLoop = null)
-    {
+    public function __construct(
+        ServerConfig $config,
+        ?EventLoop $eventLoop = null,
+        ?CommandDispatcher $dispatcher = null,
+        ?Store $store = null,
+    ) {
         $this->socket = new ServerSocket($config);
         $this->connections = new ConnectionManager();
         $this->eventLoop = $eventLoop ?? new SelectLoop();
+        $this->dispatcher = $dispatcher ?? CommandDispatcher::withDefaultHandlers();
+        $this->store = $store ?? new InMemoryStore();
+        $this->streamReader = new RespStreamReader();
+        $this->encoder = new RespEncoder();
     }
 
     public function localAddress(): string
     {
         return $this->socket->localAddress();
+    }
+
+    public function store(): Store
+    {
+        return $this->store;
     }
 
     /**
@@ -93,8 +121,8 @@ final class RedisServer
 
     /**
      * Reads whatever is available into the connection's ReadBuffer whenever
-     * its socket becomes readable, and disconnects it once the client goes
-     * away.
+     * its socket becomes readable, executes every complete command found,
+     * and disconnects the client once it goes away.
      */
     private function watchForIncomingData(ClientConnection $connection): void
     {
@@ -113,7 +141,50 @@ final class RedisServer
 
             $connection->setState(ConnectionState::Reading);
             $connection->appendToReadBuffer($chunk);
+            $this->processBufferedCommands($connection);
         });
+    }
+
+    private function processBufferedCommands(ClientConnection $connection): void
+    {
+        try {
+            [$values, $consumed] = $this->streamReader->readAll($connection->readBuffer()->contents());
+        } catch (ProtocolException) {
+            // Phase 24 will reply with a proper RESP error; for now a
+            // malformed stream simply ends the connection instead of
+            // taking the rest of the server down with it.
+            $this->disconnectClient($connection);
+
+            return;
+        }
+
+        if ($consumed > 0) {
+            $connection->readBuffer()->consume($consumed);
+        }
+
+        foreach ($values as $value) {
+            $this->executeValue($connection, $value);
+        }
+    }
+
+    private function executeValue(ClientConnection $connection, RespValue $value): void
+    {
+        $connection->setState(ConnectionState::Processing);
+
+        try {
+            $command = Command::fromRespValue($value);
+            $result = $this->dispatcher->dispatch($command, $this->store);
+        } catch (CommandException $exception) {
+            $result = RespValue::error('ERR ' . $exception->getMessage());
+        }
+
+        $connection->setState(ConnectionState::Writing);
+
+        // A naive, complete write for now - Phase 13 introduces a proper
+        // WriteBuffer for responses that cannot be flushed in one call.
+        @fwrite($connection->socket(), $this->encoder->encode($result));
+
+        $connection->setState(ConnectionState::Reading);
     }
 
     private function disconnectClient(ClientConnection $connection): void

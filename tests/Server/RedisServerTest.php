@@ -103,7 +103,7 @@ final class RedisServerTest extends TestCase
         fclose($client);
     }
 
-    public function testPartialWritesAccumulateInTheReadBufferAcrossTicks(): void
+    public function testPartialCommandsAccumulateInTheReadBufferAcrossTicks(): void
     {
         $loop = new SelectLoop();
         $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), $loop);
@@ -115,14 +115,88 @@ final class RedisServerTest extends TestCase
             $connection = $server->acceptClient(5);
             self::assertInstanceOf(ClientConnection::class, $connection);
 
-            fwrite($client, 'SET f');
+            fwrite($client, "*3\r\n\$3\r\nSET\r\n\$3\r\nfoo\r\n\$3\r\nba");
             $loop->tick(1);
-            self::assertSame('SET f', $connection->readBuffer()->contents());
+            self::assertSame("*3\r\n\$3\r\nSET\r\n\$3\r\nfoo\r\n\$3\r\nba", $connection->readBuffer()->contents());
             self::assertSame(ConnectionState::Reading, $connection->state());
 
-            fwrite($client, 'oo bar');
+            fwrite($client, "r\r\n");
             $loop->tick(1);
-            self::assertSame('SET foo bar', $connection->readBuffer()->contents());
+            self::assertSame('', $connection->readBuffer()->contents());
+            self::assertSame('bar', $server->store()->get('foo'));
+            self::assertSame("+OK\r\n", fread($client, 1024));
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
+
+    public function testExecutesCommandsSentByARealClientAndRepliesWithResp(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), $loop);
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+            $server->acceptClient(5);
+
+            fwrite($client, "*1\r\n\$4\r\nPING\r\n");
+            $loop->tick(1);
+            self::assertSame("+PONG\r\n", fread($client, 1024));
+
+            fwrite($client, "*3\r\n\$3\r\nSET\r\n\$4\r\nname\r\n\$5\r\nTanat\r\n");
+            $loop->tick(1);
+            self::assertSame("+OK\r\n", fread($client, 1024));
+
+            fwrite($client, "*2\r\n\$3\r\nGET\r\n\$4\r\nname\r\n");
+            $loop->tick(1);
+            self::assertSame("\$5\r\nTanat\r\n", fread($client, 1024));
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
+
+    public function testProcessesMultiplePipelinedCommandsFromOneRead(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), $loop);
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+            $server->acceptClient(5);
+
+            fwrite($client, "*1\r\n\$4\r\nPING\r\n*1\r\n\$4\r\nPING\r\n");
+            $loop->tick(1);
+
+            self::assertSame("+PONG\r\n+PONG\r\n", fread($client, 1024));
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
+
+    public function testMalformedInputDisconnectsOnlyThatClient(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), $loop);
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+            $connection = $server->acceptClient(5);
+            self::assertInstanceOf(ClientConnection::class, $connection);
+
+            fwrite($client, "not resp at all\r\n");
+            $loop->tick(1);
+
+            self::assertSame(0, $server->connectedClientCount());
+            self::assertSame(ConnectionState::Closed, $connection->state());
 
             fclose($client);
         } finally {

@@ -74,7 +74,7 @@ The project should remain:
 - [x] Phase 9 — In-Memory Store
 - [x] Phase 10 — Basic Commands
 - [x] Phase 11 — Command Dispatcher
-- [ ] Phase 12 — Response Encoder
+- [x] Phase 12 — Response Encoder
 - [ ] Phase 13 — Write Buffer
 - [ ] Phase 14 — Multiple Commands
 - [ ] Phase 15 — Pipelining
