@@ -37,7 +37,7 @@ final class InMemoryStore implements Store
 
     public function delete(string $key): bool
     {
-        if (!$this->has($key)) {
+        if ($this->entryOrNull($key) === null) {
             return false;
         }
 
