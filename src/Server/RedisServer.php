@@ -179,12 +179,45 @@ final class RedisServer
         }
 
         $connection->setState(ConnectionState::Writing);
+        $connection->appendToWriteBuffer($this->encoder->encode($result));
+        $this->flushWriteBuffer($connection);
+    }
 
-        // A naive, complete write for now - Phase 13 introduces a proper
-        // WriteBuffer for responses that cannot be flushed in one call.
-        @fwrite($connection->socket(), $this->encoder->encode($result));
+    /**
+     * Writes as much of the connection's WriteBuffer as the socket accepts
+     * right now. Whatever does not fit stays queued, and the socket is
+     * watched for the next writable event instead of blocking on it.
+     */
+    private function flushWriteBuffer(ClientConnection $connection): void
+    {
+        $buffer = $connection->writeBuffer();
 
-        $connection->setState(ConnectionState::Reading);
+        if ($buffer->isEmpty()) {
+            return;
+        }
+
+        $written = @fwrite($connection->socket(), $buffer->contents());
+
+        if ($written === false) {
+            $this->disconnectClient($connection);
+
+            return;
+        }
+
+        if ($written > 0) {
+            $buffer->consume($written);
+        }
+
+        if ($buffer->isEmpty()) {
+            $this->eventLoop->removeWritable($connection->socket());
+            $connection->setState(ConnectionState::Reading);
+
+            return;
+        }
+
+        $this->eventLoop->onWritable($connection->socket(), function () use ($connection): void {
+            $this->flushWriteBuffer($connection);
+        });
     }
 
     private function disconnectClient(ClientConnection $connection): void

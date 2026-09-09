@@ -1337,7 +1337,7 @@ The project is implemented incrementally.
 
 - [x] Connection Lifecycle
 - [x] Read Buffers
-- [ ] Write Buffers
+- [x] Write Buffers
 - [x] Cleanup
 
 ## Phase 4 — RESP

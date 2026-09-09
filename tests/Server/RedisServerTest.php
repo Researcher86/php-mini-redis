@@ -181,6 +181,36 @@ final class RedisServerTest extends TestCase
         }
     }
 
+    public function testAPartialWriteIsQueuedInTheWriteBufferInsteadOfBlocking(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), $loop);
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+            $connection = $server->acceptClient(5);
+            self::assertInstanceOf(ClientConnection::class, $connection);
+
+            // A response this large will not fit in the socket's send
+            // buffer in one fwrite() call, so completing it (a blocking
+            // write would stall this test) requires queuing the remainder
+            // and waiting for a writable event instead.
+            $size = 8 * 1024 * 1024;
+            $server->store()->set('big', str_repeat('x', $size));
+
+            fwrite($client, "*2\r\n\$3\r\nGET\r\n\$3\r\nbig\r\n");
+            $loop->tick(1);
+
+            self::assertGreaterThan(0, $connection->writeBuffer()->length(), 'The whole response should not fit in one write.');
+            self::assertSame(ConnectionState::Writing, $connection->state());
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
+
     public function testMalformedInputDisconnectsOnlyThatClient(): void
     {
         $loop = new SelectLoop();

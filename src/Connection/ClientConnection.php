@@ -12,7 +12,7 @@ final class ClientConnection
 {
     private ConnectionState $state;
     private ReadBuffer $readBuffer;
-    private string $writeBuffer = '';
+    private WriteBuffer $writeBuffer;
     private float $lastActivityAt;
 
     /**
@@ -22,6 +22,7 @@ final class ClientConnection
     {
         $this->state = ConnectionState::New;
         $this->readBuffer = new ReadBuffer();
+        $this->writeBuffer = new WriteBuffer();
         $this->lastActivityAt = microtime(true);
     }
 
@@ -75,20 +76,20 @@ final class ClientConnection
         $this->readBuffer->clear();
     }
 
-    public function writeBuffer(): string
+    public function writeBuffer(): WriteBuffer
     {
         return $this->writeBuffer;
     }
 
     public function appendToWriteBuffer(string $bytes): void
     {
-        $this->writeBuffer .= $bytes;
+        $this->writeBuffer->append($bytes);
         $this->touch();
     }
 
     public function clearWriteBuffer(): void
     {
-        $this->writeBuffer = '';
+        $this->writeBuffer->clear();
     }
 
     public function close(): void
