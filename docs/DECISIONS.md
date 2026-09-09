@@ -207,6 +207,33 @@ It returns `false` for a key that is absent (or already expired) instead
 of creating one, so `INCR` still writes a missing counter as a new,
 permanent key - which is what real Redis does with both cases.
 
+## The client keeps pipelining and transactions in the caller's hands
+
+`RedisClient` has a method per command - `get()`, `set()`, `increment()` -
+and then deliberately stops short of two things a fuller client would
+smooth over.
+
+**Pipelining** is `pipeline([[...], [...]])` rather than something the
+client detects and does for you behind the scenes. The saving comes from
+writing every command before reading any reply, and a client that decided
+that on its own would leave a reader unable to see where the round trips
+went - which is the one thing this repository exists to show. It also
+returns error replies as values instead of throwing: one refused command
+in a batch of a hundred should not cost the other ninety-nine their
+answers.
+
+**Transactions** are `multi()` / `queue()` / `exec()`, not the typed
+methods. Inside `MULTI` the server answers `+QUEUED` to everything, so
+`get()` returning a string would be a lie - the string is not the value,
+and the value does not exist yet. `queue()` says what is actually
+happening, and `exec()` hands back one `RespValue` per queued command,
+because a transaction's commands need not agree on a return type.
+
+The client lives in `App\Sdk` rather than `App\Client`, which is already
+taken by the *server's* view of a connected client
+(`App\Connection\ClientConnection`) - the same split, and the same name,
+`php-worker-pool` uses for its own `WorkerPoolClient`.
+
 ## Backpressure cannot throttle a publisher, so subscribers get a hard limit
 
 Phase 26's backpressure answers one question - "this connection asks for

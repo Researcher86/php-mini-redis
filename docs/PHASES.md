@@ -1411,6 +1411,55 @@ Phase 15, pipelining in Phase 10).
 
 ---
 
+# Phase 38 — Client SDK
+
+## Goal
+
+Everything that talked to the server - `bin/client.php`, every script in
+`examples/`, every load test in `benchmarks/` - carried its own copy of
+connect, encode, write, read-until-a-value-parses. Four copies of the same
+forty lines, each subtly different about timeouts and short reads, and
+nothing a reader of this project could pick up and use against a server of
+their own. Give the server one client, the way `php-worker-pool` has one
+`WorkerPoolClient`.
+
+## Tasks
+
+* [x] `App\Sdk\RedisClient`: one method per command the server implements,
+      plus `command()` for anything else
+* [x] Pipelining as `pipeline()` - every command written before any reply
+      is read, one round trip for the batch
+* [x] Transactions as `multi()` / `queue()` / `exec()` / `discard()`,
+      explicit because inside a transaction the server answers `+QUEUED`
+      rather than a result
+* [x] Pub/Sub as `subscribe()` plus `nextMessage()`, where "nothing
+      arrived in time" is a `null`, not an exception
+* [x] Failures are exceptions under one `RedisClientException`: the server
+      refusing a command, the connection going away, a reply not arriving
+      in time, and never connecting at all
+* [x] Non-blocking socket underneath, so every wait is bounded by the
+      client's own timeout rather than by the server's goodwill
+* [x] `bin/`, `examples/` and `benchmarks/` all use it
+
+## Definition of Done
+
+A PHP process can use the server through one object, with no knowledge of
+RESP framing, partial reads or `stream_select()`, and every failure mode
+surfaces as a typed exception rather than as a value that has to be
+checked.
+
+## Tests
+
+* [tests/Sdk/RedisClientTest.php](../tests/Sdk/RedisClientTest.php) -
+  drives `bin/server.php` as a real process on a kernel-picked port and
+  exercises each shape against it: the typed commands, an error reply
+  raised rather than returned, a pipeline whose failed command does not
+  cost the others their replies, a transaction that is invisible until
+  `exec()`, a published message reaching a subscriber, silence coming
+  back as `null`, and a closed client reconnecting on its next command.
+
+---
+
 # Final Principle
 
 Do not optimize for:

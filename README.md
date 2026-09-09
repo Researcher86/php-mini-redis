@@ -44,9 +44,59 @@ make run-client ARGS="GET name"
 # Tanat
 ```
 
-`bin/client.php` is a minimal RESP client - one command per invocation, the
-reply printed to stdout. It exists to make this demo runnable without
-`redis-cli`, not as a general-purpose client library.
+`bin/client.php` is a one-shot wrapper around the client class below: one
+command per invocation, the reply printed to stdout. It exists to make
+this demo runnable without `redis-cli`.
+
+## Talking to it from PHP
+
+`RedisClient` is the client this project ships - a plain PHP object,
+usable from a CLI script, a PHP-FPM request or a cron job:
+
+```php
+$client = new RedisClient('127.0.0.1', 6380);
+
+$client->set('name', 'Tanat', ttlSeconds: 60);
+$client->get('name');                  // 'Tanat'
+$client->increment('hits');            // 1
+$client->command('INFO');              // anything without a method of its own
+```
+
+Failures are exceptions rather than values to remember to check: a
+`-ERR ...` reply raises `CommandFailedException`, a dropped connection
+`ConnectionLostException`, a server that stops answering
+`ReplyTimedOutException` - all under one `RedisClientException` for
+callers that only care that it did not work.
+
+Two things stay explicit, because hiding them would hide the mechanism
+they exist to demonstrate:
+
+```php
+// Pipelining: every command written before any reply is read.
+[$ok, $count, $value] = $client->pipeline([
+    ['SET', 'counter', '41'],
+    ['INCR', 'counter'],
+    ['GET', 'counter'],
+]);
+
+// Transactions: the server answers +QUEUED, so results arrive at exec().
+$client->multi();
+$client->queue('INCR', 'counter');
+$client->queue('GET', 'counter');
+$results = $client->exec();
+```
+
+Pub/Sub is a subscription plus a blocking read, with silence reported as
+`null` rather than as a failure:
+
+```php
+$subscriber = new RedisClient();
+$subscriber->subscribe('news');
+
+while ($message = $subscriber->nextMessage(timeoutSeconds: 30)) {
+    echo $message->channel, ': ', $message->payload, PHP_EOL;
+}
+```
 
 Past `PING`/`SET`/`GET`, [examples/](examples/) has one small standalone
 script per mechanism worth watching rather than just reading about:
@@ -79,6 +129,7 @@ make example NAME=slow-client            # a paused slow reader vs. an unaffecte
 | **Limits** | capped read buffer size, arguments per command, and connection count - each replies with a RESP error instead of growing unbounded |
 | **Backpressure** | a slow reader's write buffer is capped - reading from it pauses until it drains, instead of growing unbounded; a subscriber that never reads is dropped, since pausing its reads cannot slow a publisher down |
 | **Metrics** | `INFO` reports connections, commands (overall, per name, and unknown), bytes in/out, errors, expired keys |
+| **Client** | `RedisClient` - typed commands, pipelining, transactions, Pub/Sub, timeouts, errors as exceptions |
 
 Every phase in [docs/PHASES.md](docs/PHASES.md) is done - the tests, the
 measured benchmarks, and the standalone `examples/` scripts included -
@@ -410,6 +461,11 @@ php-mini-redis/
 │   │
 │   ├── Metrics/
 │   │   └── ServerMetrics.php
+│   │
+│   ├── Sdk/
+│   │   ├── RedisClient.php      # the client the demos and benchmarks use
+│   │   ├── PubSubMessage.php
+│   │   └── RedisClientException.php + one per failure mode
 │   │
 │   ├── Support/
 │   │   ├── Clock.php
