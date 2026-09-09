@@ -9,6 +9,7 @@ use App\Command\CommandDispatcher;
 use App\Command\CommandException;
 use App\Command\Handler\DiscardCommand;
 use App\Command\Handler\ExecCommand;
+use App\Command\Handler\InfoCommand;
 use App\Command\Handler\MultiCommand;
 use App\Command\Handler\PublishCommand;
 use App\Command\Handler\SubscribeCommand;
@@ -17,6 +18,7 @@ use App\Connection\ConnectionManager;
 use App\Connection\ConnectionState;
 use App\EventLoop\EventLoop;
 use App\EventLoop\SelectLoop;
+use App\Metrics\ServerMetrics;
 use App\Persistence\SnapshotStore;
 use App\Protocol\ProtocolException;
 use App\Protocol\RespEncoder;
@@ -54,6 +56,7 @@ final class RedisServer
     private ChannelRegistry $channels;
     private TransactionManager $transactions;
     private ?SnapshotStore $snapshots;
+    private ServerMetrics $metrics;
     private bool $shuttingDown = false;
 
     /** @var array<int, true> Connection ids currently paused for reading. */
@@ -96,6 +99,7 @@ final class RedisServer
         $this->expirationSweepIntervalSeconds = $expirationSweepIntervalSeconds;
         $this->idleTimeoutSeconds = $idleTimeoutSeconds;
         $this->snapshots = $snapshotPath === null ? null : new SnapshotStore($snapshotPath);
+        $this->metrics = new ServerMetrics();
 
         if ($this->snapshots !== null && $this->store instanceof InMemoryStore) {
             $this->snapshots->load($this->store);
@@ -120,10 +124,12 @@ final class RedisServer
         $this->dispatcher->register('DISCARD', new DiscardCommand($this->transactions));
         $this->dispatcher->register('EXEC', new ExecCommand($this->transactions, $this->dispatcher));
 
+        $this->dispatcher->register('INFO', new InfoCommand($this->metrics, $this->connections));
+
         // Active expiration: expired keys are also removed on a timer,
         // instead of only being noticed lazily the next time they are read.
         $this->eventLoop->every($this->expirationSweepIntervalSeconds, function (): void {
-            $this->store->sweepExpired();
+            $this->metrics->recordExpiredKeys($this->store->sweepExpired());
         });
 
         if ($this->idleTimeoutSeconds !== null) {
@@ -161,6 +167,11 @@ final class RedisServer
         return $this->store;
     }
 
+    public function metrics(): ServerMetrics
+    {
+        return $this->metrics;
+    }
+
     /**
      * Blocks until a client connects (or the timeout elapses), and starts
      * tracking it. Useful outside the event loop, e.g. in tests.
@@ -184,6 +195,7 @@ final class RedisServer
         $connection->setState(ConnectionState::Connected);
         $this->connections->add($connection);
         $this->watchForIncomingData($connection);
+        $this->metrics->recordConnection();
 
         return $connection;
     }
@@ -295,6 +307,7 @@ final class RedisServer
 
             $connection->setState(ConnectionState::Reading);
             $connection->appendToReadBuffer($chunk);
+            $this->metrics->recordBytesRead(strlen($chunk));
             $this->processBufferedCommands($connection);
 
             // processBufferedCommands() may already have disconnected this
@@ -339,6 +352,7 @@ final class RedisServer
         $connection->setState(ConnectionState::Processing);
 
         if ($value->type === RespType::Array && is_array($value->value) && count($value->value) > $this->maxArgumentsPerCommand) {
+            $this->metrics->recordError();
             $connection->setState(ConnectionState::Writing);
             $this->queueForWrite($connection, $this->encoder->encode(RespValue::error('ERR too many arguments')));
 
@@ -347,6 +361,7 @@ final class RedisServer
 
         try {
             $command = Command::fromRespValue($value);
+            $this->metrics->recordCommand($command->name);
 
             if ($this->transactions->isActive($connection) && !in_array($command->name, ['MULTI', 'EXEC', 'DISCARD'], true)) {
                 $this->transactions->queue($connection, $command);
@@ -356,6 +371,10 @@ final class RedisServer
             }
         } catch (CommandException $exception) {
             $result = RespValue::error('ERR ' . $exception->getMessage());
+        }
+
+        if ($result->type === RespType::Error) {
+            $this->metrics->recordError();
         }
 
         $connection->setState(ConnectionState::Writing);
@@ -397,6 +416,7 @@ final class RedisServer
 
         if ($written > 0) {
             $buffer->consume($written);
+            $this->metrics->recordBytesWritten($written);
         }
 
         if ($buffer->isEmpty()) {
@@ -465,6 +485,7 @@ final class RedisServer
      */
     private function sendErrorAndDisconnect(ClientConnection $connection, string $message): void
     {
+        $this->metrics->recordError();
         @fwrite($connection->socket(), $this->encoder->encode(RespValue::error($message)));
         $this->disconnectClient($connection);
     }

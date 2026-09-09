@@ -844,4 +844,43 @@ final class RedisServerTest extends TestCase
             $server->stop();
         }
     }
+
+    public function testMetricsTrackRealTrafficAndInfoReportsThem(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), $loop);
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+            $server->acceptClient(5);
+
+            self::assertSame(1, $server->metrics()->connectionsTotal());
+
+            fwrite($client, "*1\r\n\$4\r\nPING\r\n");
+            $loop->tick(1);
+            fread($client, 1024);
+
+            fwrite($client, "*1\r\n\$7\r\nUNKNOWN\r\n");
+            $loop->tick(1);
+            fread($client, 1024);
+
+            self::assertSame(2, $server->metrics()->commandsProcessed());
+            self::assertSame(1, $server->metrics()->commandsByType()['PING']);
+            self::assertGreaterThan(0, $server->metrics()->bytesRead());
+            self::assertGreaterThan(0, $server->metrics()->bytesWritten());
+            self::assertSame(1, $server->metrics()->errors());
+
+            fwrite($client, "*1\r\n\$4\r\nINFO\r\n");
+            $loop->tick(1);
+            $reply = fread($client, 4096);
+
+            self::assertStringContainsString('total_commands_processed:3', $reply);
+            self::assertStringContainsString('cmdstat_ping:calls=1', $reply);
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
 }

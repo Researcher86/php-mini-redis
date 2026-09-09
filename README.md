@@ -67,9 +67,11 @@ reply printed to stdout. It exists to make this demo runnable without
 | **Graceful shutdown** | `SIGTERM`/`SIGINT` stop new connections and drain existing ones before exiting |
 | **Limits** | capped read buffer size, arguments per command, and connection count - each replies with a RESP error instead of growing unbounded |
 | **Backpressure** | a slow reader's write buffer is capped - reading from it pauses until it drains, instead of growing unbounded |
+| **Metrics** | `INFO` reports connections, commands (overall and per name), bytes in/out, errors, expired keys |
 
-Still ahead: metrics - see [docs/PHASES.md](docs/PHASES.md) for what that
-means and where it stands.
+Every feature phase in [docs/PHASES.md](docs/PHASES.md) is done; what's
+left there (tests, benchmarks, standalone examples) is process rather
+than a capability the server is missing.
 
 ---
 
@@ -753,6 +755,19 @@ DISCARD (cancel it)
 
 Queuing and execution are per connection - one client's `MULTI` has no
 effect on another's commands. See [Transactions](#transactions) below.
+
+---
+
+## INFO
+
+```text
+INFO
+```
+
+Replies with one bulk string of `key:value` lines - connections,
+commands processed overall and by name, bytes read/written, errors,
+expired keys. Matches real Redis's own `INFO` reply shape, though only a
+small subset of what it actually reports.
 
 ---
 

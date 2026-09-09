@@ -97,7 +97,7 @@ one test answers for one line of the plan. The whole suite runs with
 - [x] Phase 24 — Error Handling
 - [x] Phase 25 — Limits
 - [x] Phase 26 — Backpressure
-- [ ] Phase 27 — Metrics
+- [x] Phase 27 — Metrics
 - [ ] Phase 28 — Tests
 - [ ] Phase 29 — Benchmarks
 - [ ] Phase 30 — Experiments
@@ -939,9 +939,31 @@ in/out, expired keys.
 
 ## Tasks
 
-* [ ] `MetricsCollector`
-* [ ] An `INFO`-like command, or a signal-driven dump (see the sibling
-      `php-worker-pool` project's `SIGUSR1` convention)
+* [x] `ServerMetrics`: connections total, commands processed (overall and
+      per command name), bytes read/written, errors, expired keys
+* [x] `RedisServer` records into it at every point that already existed
+      for another reason - accepting a connection, reading a chunk,
+      dispatching a command, an error reply, a partial write, the
+      expiration sweep timer - rather than a second pass over the code
+* [x] `INFO` command: one bulk string of `key:value` lines, matching real
+      Redis's own convention for the reply shape
+
+## Definition of Done
+
+A running server's traffic is visible from the outside, through the
+protocol itself (`INFO`) rather than a log file or a second channel.
+
+## Tests
+
+- [tests/Metrics/ServerMetricsTest.php](../tests/Metrics/ServerMetricsTest.php) -
+  every counter, independently.
+- [tests/Command/Handler/InfoCommandTest.php](../tests/Command/Handler/InfoCommandTest.php) -
+  the formatted reply, and that `connected_clients` reflects the
+  `ConnectionManager` rather than the metrics object (they track different
+  things: connections *ever* accepted vs. connections *currently* open).
+- [tests/Server/RedisServerTest.php](../tests/Server/RedisServerTest.php) -
+  `testMetricsTrackRealTrafficAndInfoReportsThem`: real commands over a
+  real connection, then `INFO` itself confirms its own call was counted.
 
 ---
 
