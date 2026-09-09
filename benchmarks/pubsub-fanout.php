@@ -34,10 +34,8 @@ for ($i = 0; $i < SUBSCRIBERS; $i++) {
         $socket = exampleConnect();
         exampleCommand($socket, ['SUBSCRIBE', 'news']);
 
-        $received = 0;
-        while (true) { // @phpstan-ignore while.alwaysTrue
+        while (true) {
             $message = exampleReceive($socket);
-            $received++;
 
             if (isset($message->value[2]) && $message->value[2]->value === '__done__') {
                 fclose($socket);
@@ -57,7 +55,7 @@ $publisher = exampleConnect();
 $start = microtime(true);
 
 for ($i = 0; $i < MESSAGES; $i++) {
-    $delivered = exampleCommand($publisher, ['PUBLISH', 'news', "msg-$i"])->value;
+    exampleCommand($publisher, ['PUBLISH', 'news', "msg-$i"]);
 }
 
 $totalDelivered = SUBSCRIBERS * MESSAGES;
