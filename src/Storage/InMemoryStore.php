@@ -6,6 +6,7 @@ namespace App\Storage;
 
 use App\Support\Clock;
 use App\Support\SystemClock;
+use SplMinHeap;
 
 final class InMemoryStore implements Store
 {
@@ -17,9 +18,9 @@ final class InMemoryStore implements Store
      * what is actually due instead of walking every entry. Each heap element
      * is [expiresAt, version, key].
      *
-     * @var \SplMinHeap<array{0: float, 1: int, 2: string}>
+     * @var SplMinHeap<array{0: float, 1: int, 2: string}>
      */
-    private \SplMinHeap $expirations;
+    private SplMinHeap $expirations;
 
     /**
      * The version each live key was last written at. A heap entry is only
@@ -45,7 +46,7 @@ final class InMemoryStore implements Store
     public function __construct(
         private readonly Clock $clock = new SystemClock(),
     ) {
-        $this->expirations = new \SplMinHeap();
+        $this->expirations = new SplMinHeap();
     }
 
     public function set(string $key, mixed $value, ?int $ttlSeconds = null): void
@@ -160,7 +161,7 @@ final class InMemoryStore implements Store
     {
         $this->data = [];
         $this->versions = [];
-        $this->expirations = new \SplMinHeap();
+        $this->expirations = new SplMinHeap();
 
         foreach ($entries as $key => $entry) {
             $expiresAt = $entry['expiresAt'];

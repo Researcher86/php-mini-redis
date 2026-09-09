@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Persistence;
 
 use App\Storage\InMemoryStore;
+use Throwable;
 
 /**
  * Writes snapshots in a forked child so the event loop is not blocked by
@@ -85,7 +86,7 @@ final class ForkingSnapshotWorker
         // still say about it.
         try {
             $this->snapshots->save($store);
-        } catch (\Throwable $exception) {
+        } catch (Throwable $exception) {
             fwrite($this->errorStream ?? STDERR, sprintf("Snapshot failed: %s\n", $exception->getMessage()));
 
             exit(1);

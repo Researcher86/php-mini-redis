@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Persistence;
 
 use App\Storage\InMemoryStore;
+use RuntimeException;
 
 /**
  * Saves an InMemoryStore's contents to a file and reloads them on startup.
@@ -42,13 +43,13 @@ final readonly class SnapshotStore
         $bytes = @file_put_contents($tmpPath, serialize($store->snapshot()));
 
         if ($bytes === false) {
-            throw new \RuntimeException(sprintf('Failed to write snapshot to %s.', $tmpPath));
+            throw new RuntimeException(sprintf('Failed to write snapshot to %s.', $tmpPath));
         }
 
         if (!@rename($tmpPath, $this->path)) {
             @unlink($tmpPath);
 
-            throw new \RuntimeException(sprintf('Failed to move snapshot into place at %s.', $this->path));
+            throw new RuntimeException(sprintf('Failed to move snapshot into place at %s.', $this->path));
         }
     }
 
