@@ -1323,99 +1323,60 @@ The project is implemented incrementally.
 
 ## Phase 1 — TCP Server
 
-```text
-Socket
-
-Listen
-
-Accept Connection
-```
+- [x] Socket
+- [x] Listen
+- [x] Accept Connection
 
 ## Phase 2 — Event Loop
 
-```text
-Read Events
-
-Write Events
-
-Timers
-```
+- [x] Read Events
+- [x] Write Events
+- [ ] Timers
 
 ## Phase 3 — Connections
 
-```text
-Connection Lifecycle
-
-Read Buffers
-
-Write Buffers
-
-Cleanup
-```
+- [x] Connection Lifecycle
+- [x] Read Buffers
+- [ ] Write Buffers
+- [x] Cleanup
 
 ## Phase 4 — RESP
 
-```text
-Parser
-
-Encoder
-
-Partial Requests
-```
+- [ ] Parser
+- [ ] Encoder
+- [ ] Partial Requests
 
 ## Phase 5 — Commands
 
-```text
-PING
-
-SET
-
-GET
-
-DEL
-
-EXISTS
-```
+- [ ] PING
+- [ ] SET
+- [ ] GET
+- [ ] DEL
+- [ ] EXISTS
 
 ## Phase 6 — Storage
 
-```text
-In-Memory Storage
-
-Keys
-
-Values
-```
+- [ ] In-Memory Storage
+- [ ] Keys
+- [ ] Values
 
 ## Phase 7 — TTL
 
-```text
-Expiration
-
-Timers
-
-Cleanup
-```
+- [ ] Expiration
+- [ ] Timers
+- [ ] Cleanup
 
 ## Phase 8 — Backpressure
 
-```text
-Slow Clients
-
-Write Buffers
-
-Flow Control
-```
+- [ ] Slow Clients
+- [ ] Write Buffers
+- [ ] Flow Control
 
 ## Phase 9 — Pub/Sub
 
-```text
-Channels
-
-Subscribers
-
-Message Delivery
-```
+- [ ] Channels
+- [ ] Subscribers
+- [ ] Message Delivery
 
 ---
 

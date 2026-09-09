@@ -60,6 +60,42 @@ The project should remain:
 
 ---
 
+# Progress
+
+- [x] Phase 0 — Project Setup
+- [x] Phase 1 — TCP Server
+- [x] Phase 2 — Client Connection
+- [x] Phase 3 — Event Loop
+- [x] Phase 4 — Non-Blocking Sockets
+- [x] Phase 5 — Read Buffer
+- [ ] Phase 6 — Redis Protocol
+- [ ] Phase 7 — RESP Parser
+- [ ] Phase 8 — Command Model
+- [ ] Phase 9 — In-Memory Store
+- [ ] Phase 10 — Basic Commands
+- [ ] Phase 11 — Command Dispatcher
+- [ ] Phase 12 — Response Encoder
+- [ ] Phase 13 — Write Buffer
+- [ ] Phase 14 — Multiple Commands
+- [ ] Phase 15 — Pipelining
+- [ ] Phase 16 — TTL
+- [ ] Phase 17 — Expiration Strategy
+- [ ] Phase 18 — Event Loop Timers
+- [ ] Phase 19 — Connection Timeout
+- [ ] Phase 20 — Pub/Sub
+- [ ] Phase 21 — Transactions
+- [ ] Phase 22 — Persistence
+- [ ] Phase 23 — Graceful Shutdown
+- [ ] Phase 24 — Error Handling
+- [ ] Phase 25 — Limits
+- [ ] Phase 26 — Backpressure
+- [ ] Phase 27 — Metrics
+- [ ] Phase 28 — Tests
+- [ ] Phase 29 — Benchmarks
+- [ ] Phase 30 — Experiments
+
+---
+
 # Phase 0 — Project Setup
 
 ## Goal
