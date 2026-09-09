@@ -212,6 +212,35 @@ final class RedisServerTest extends TestCase
         }
     }
 
+    public function testPipelinedCommandsAreAppliedInOrderWithoutWaitingForEachReply(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), $loop);
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+            $server->acceptClient(5);
+
+            // The client sends three commands back to back, without
+            // reading a reply in between - and INCR/GET depend on the SET
+            // (and each other) having already been applied in order.
+            fwrite(
+                $client,
+                "*3\r\n\$3\r\nSET\r\n\$7\r\ncounter\r\n\$1\r\n1\r\n"
+                . "*2\r\n\$4\r\nINCR\r\n\$7\r\ncounter\r\n"
+                . "*2\r\n\$3\r\nGET\r\n\$7\r\ncounter\r\n",
+            );
+            $loop->tick(1);
+
+            self::assertSame("+OK\r\n:2\r\n\$1\r\n2\r\n", fread($client, 1024));
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
+
     public function testAPartialWriteIsQueuedInTheWriteBufferInsteadOfBlocking(): void
     {
         $loop = new SelectLoop();
