@@ -531,6 +531,34 @@ final class RedisServerTest extends TestCase
         }
     }
 
+    public function testAValidCommandBeforeMalformedInputIsStillExecuted(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(new ServerConfig(host: '127.0.0.1', port: 0), $loop);
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+            $connection = $server->acceptClient(5);
+            self::assertInstanceOf(ClientConnection::class, $connection);
+
+            // A good command followed by a desynced stream in the same
+            // buffer: the good command must still run before the protocol
+            // error takes the connection down.
+            fwrite($client, "*3\r\n\$3\r\nSET\r\n\$3\r\nfoo\r\n\$3\r\nbar\r\nnot resp\r\n");
+            $loop->tick(1);
+
+            self::assertStringStartsWith("+OK\r\n-ERR Protocol error:", fread($client, 1024));
+            self::assertSame('bar', $server->store()->get('foo'));
+            self::assertSame(0, $server->connectedClientCount());
+            self::assertSame(ConnectionState::Closed, $connection->state());
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
+
     public function testClientDisconnectIsDetectedAndCleanedUp(): void
     {
         $loop = new SelectLoop();

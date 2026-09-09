@@ -20,7 +20,6 @@ use App\EventLoop\EventLoop;
 use App\EventLoop\SelectLoop;
 use App\Metrics\ServerMetrics;
 use App\Persistence\SnapshotStore;
-use App\Protocol\ProtocolException;
 use App\Protocol\RespEncoder;
 use App\Protocol\RespStreamReader;
 use App\Protocol\RespType;
@@ -324,19 +323,7 @@ final class RedisServer
 
     private function processBufferedCommands(ClientConnection $connection): void
     {
-        try {
-            [$values, $consumed] = $this->streamReader->readAll($connection->readBuffer()->contents());
-        } catch (ProtocolException $exception) {
-            // Unlike a command-level error (wrong argument count, an
-            // unknown name), a desynced byte stream cannot be
-            // resynchronized - there is no reliable way to find the start
-            // of the next value once framing is lost. The client still
-            // gets a proper RESP error, the same as real Redis, before the
-            // connection closes.
-            $this->sendErrorAndDisconnect($connection, 'ERR Protocol error: ' . $exception->getMessage());
-
-            return;
-        }
+        [$values, $consumed, $error] = $this->streamReader->readAll($connection->readBuffer()->contents());
 
         if ($consumed > 0) {
             $connection->readBuffer()->consume($consumed);
@@ -345,6 +332,19 @@ final class RedisServer
         foreach ($values as $value) {
             $this->executeValue($connection, $value);
         }
+
+        if ($error === null) {
+            return;
+        }
+
+        // Unlike a command-level error (wrong argument count, an unknown
+        // name), a desynced byte stream cannot be resynchronized - there
+        // is no reliable way to find the start of the next value once
+        // framing is lost. Everything that arrived before the bad byte
+        // has already been applied in order above; the client still gets
+        // a proper RESP error, the same as real Redis, before the
+        // connection closes.
+        $this->sendErrorAndDisconnect($connection, 'ERR Protocol error: ' . $error->getMessage());
     }
 
     private function executeValue(ClientConnection $connection, RespValue $value): void
