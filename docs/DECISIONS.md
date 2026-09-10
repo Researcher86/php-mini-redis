@@ -149,6 +149,34 @@ many bytes `fwrite()` actually accepted. Naming them for their direction
 keeps each call site's intent obvious at the point of use, at the cost of a
 small amount of duplication between two ~40-line classes.
 
+## Stale heap entries are left to expire rather than removed
+
+The expiration heap is append-only in practice: `set()` with a TTL pushes
+an entry, and nothing removes one when the key is overwritten, deleted, or
+read after expiring. Only the sweep discards them, and only when they come
+due.
+
+So a key rewritten with a new TTL over and over -
+
+```text
+SET hot v EX 1
+SET hot v EX 2
+SET hot v EX 3
+...
+```
+
+- leaves one entry per rewrite behind it, and the heap holds O(TTL
+rewrites) until each comes due and is thrown away. The alternative is
+finding and removing the old entry on every write, which means a second
+index from key to heap position and keeping it correct through every
+sift - a real data structure, to save memory in a case (hot key, TTL
+rewritten in a tight loop) this server does not have a reason to
+optimise for.
+
+What bounds it: every stale entry has a due time, and the sweep discards
+one per pass without touching the store. The heap grows with expiries not
+yet reached, never with keys that are gone.
+
 ## One clock reaches everything that measures time
 
 `Clock` is injected into `SelectLoop`, `InMemoryStore`, `RedisServer` -

@@ -13,11 +13,16 @@ use Throwable;
  * Writes snapshots in a forked child so the event loop is not blocked by
  * copying, serializing and writing the store to disk.
  *
- * The store is written as of the moment the child forks: PHP's copy-on-write
- * means the child's view of the store is a consistent point-in-time snapshot
- * taken for free, with no upfront copy in the parent. The parent keeps
- * serving the loop and reaps the child via SIGCHLD (installed by the
- * server).
+ * The store is written as of the moment the child forks: copy-on-write
+ * gives the child a consistent point-in-time view without the parent
+ * copying anything up front, and the parent goes back to serving the loop
+ * immediately. The child is reaped via SIGCHLD (installed by the server).
+ *
+ * "Free" only describes the parent's side. The child still builds the whole
+ * snapshot array (`InMemoryStore::snapshot()`) and then serializes it, so
+ * its own memory grows to roughly the size of the store again while it
+ * works - which for a large store is the real cost of taking one, and the
+ * reason a snapshot is not something to schedule every second.
  *
  * Falls back to a synchronous save when fork() fails - correct, just blocks
  * the loop for the duration.
