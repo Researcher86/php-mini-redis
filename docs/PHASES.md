@@ -1,7 +1,7 @@
 # PHP Mini Redis — How It Was Built
 
-The plan this project was built from: thirty-eight phases, Phase 0 through
-Phase 37, each with what it had to achieve and how it was confirmed done.
+The plan this project was built from: thirty-nine phases, Phase 0 through
+Phase 38, each with what it had to achieve and how it was confirmed done.
 Every one of them is finished except Phase 36, the epoll reactor, which is
 deferred and says why - this is kept as the record of the order things
 were built in and what each step was actually for, not as work

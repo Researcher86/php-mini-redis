@@ -1601,8 +1601,8 @@ Publish a message and observe delivery.
 
 # Roadmap
 
-The project was implemented incrementally, thirty-eight phases in total
-(Phase 0 through Phase 37), every one of them finished except the
+The project was implemented incrementally, thirty-nine phases in total
+(Phase 0 through Phase 38), every one of them finished except the
 deferred epoll reactor. The full list, with a Definition of Done and the
 exact tests behind each one, lives in [docs/PHASES.md](docs/PHASES.md) -
 this is the short version:
@@ -1614,7 +1614,8 @@ dispatcher, multiple commands per read, pipelining, TTL (lazy and active
 expiration), event loop timers, connection timeout, Pub/Sub,
 transactions, persistence, graceful shutdown, explicit RESP error
 handling, resource limits, backpressure, metrics, a measured benchmark
-pass, and a handful of standalone `examples/` scripts.
+pass, a handful of standalone `examples/` scripts, and the client
+everything above talks to the server with.
 
 ---
 
