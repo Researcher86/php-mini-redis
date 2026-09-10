@@ -51,9 +51,9 @@ final class InMemoryStore implements Store
             return false;
         }
 
-        // The version and the heap entry both stay as they are: they are
-        // keyed on the expiration, and that is precisely what does not
-        // change here.
+        // The key's heap entry stays as it is: it is keyed on the
+        // expiration, and the expiration is precisely what does not change
+        // here.
         $this->data[$key] = new StoredValue($value, $entry->expiresAt);
 
         return true;
