@@ -1,7 +1,7 @@
 # PHP Mini Redis — How It Was Built
 
-The plan this project was built from: thirty-nine phases, Phase 0 through
-Phase 38, each with what it had to achieve and how it was confirmed done.
+The plan this project was built from: forty phases, Phase 0 through
+Phase 39, each with what it had to achieve and how it was confirmed done.
 Every one of them is finished except Phase 36, the epoll reactor, which is
 deferred and says why - this is kept as the record of the order things
 were built in and what each step was actually for, not as work
@@ -1462,6 +1462,69 @@ checked.
   cost the others their replies, a transaction that is invisible until
   `exec()`, a published message reaching a subscriber, silence coming
   back as `null`, and a closed client reconnecting on its next command.
+
+---
+
+# Phase 39 — Bounded Work and Lifecycle Correctness
+
+## Goal
+
+A review of the finished server found nothing missing from the feature
+list and three things wrong with how it spends resources and orders
+events: a shutdown that could publish an older snapshot than the one it
+had just written, a pipeline whose replies were all built in memory
+before backpressure was consulted, and a write buffer that copied its
+whole backlog on every partial write. None of them show up in a feature
+list; all three are what "event-driven" actually has to get right.
+
+## Tasks
+
+* [x] `stop()` waits for a scheduled snapshot still being written before
+      writing the final one - both rename into the same path, and the last
+      rename wins, so a child that forked earlier could otherwise leave its
+      older copy on disk. A child that outstays a five-second budget is
+      killed rather than allowed to overtake newer data
+* [x] Commands are parsed and executed one at a time, with replies handed
+      to the connection every `REPLY_BATCH_BYTES` (256 KiB) rather than
+      accumulated for the whole pipeline: 2 KB of `GET` against a 200 KB
+      value used to put 17.8 MB into the write buffer in one pass
+* [x] The loop stops when a batch drops or pauses the connection, leaving
+      the rest in the read buffer - which is not being read from while
+      paused - and resuming picks it up, since the client waiting for those
+      replies will not send anything that would wake the connection again
+* [x] `RespStreamReader` deleted: the server no longer reads a buffer all
+      at once, and a class that says otherwise is worse than none
+* [x] `WriteBuffer` consumes by moving an offset and compacts past 64 KiB,
+      instead of re-slicing the remaining backlog per write (2,000 writes
+      of 4 KB off a 16 MB backlog: 1.607s of `substr()` before, 0.110s
+      after); `fwrite()` gets a bounded slice for the same reason
+* [x] `ClientConnection` takes the server's `Clock` instead of calling
+      `microtime()` itself, so the idle timeout is decided by one clock and
+      its two tests advance a `FakeClock` rather than sleeping 400 ms each
+
+## Definition of Done
+
+The memory a connection can make the server hold is bounded by its
+configured limits rather than by how much it asks for; a shutdown leaves
+the newest snapshot on disk; and the cost of draining a large backlog does
+not grow with the size of the backlog.
+
+## Tests
+
+* `RedisServerTest::testTheFinalSnapshotIsNotOvertakenByOneAlreadyBeingWritten` -
+  a scheduled snapshot forks, the store moves on, and `stop()` must leave
+  the newer state on disk
+* `RedisServerTest::testAPipelineIsAnsweredInBatchesRatherThanBuiltWhole` -
+  2 KB of commands asking for 20 MB of replies queues the pause level plus
+  one batch, not the 20 MB
+* `RedisServerTest::testACommandLeftOverFromAPausedPipelineRunsOnceReadingResumes` -
+  the tail of a paused pipeline runs when the client catches up, with
+  nothing new arriving on the connection
+* `WriteBufferTest::testConsumeDropsTheWrittenPrefixAfterAPartialWrite` -
+  the offset model still behaves like a queue
+* `RedisServerTest::testIdleConnectionsAreClosedAfterTheTimeoutButActiveOnesAreNot`
+  and `::testAnIdleTimedOutSubscriberIsUnsubscribedFromItsChannels` - both
+  now driven by `FakeClock`
 
 ---
 

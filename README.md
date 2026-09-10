@@ -1600,8 +1600,8 @@ Publish a message and observe delivery.
 
 # Roadmap
 
-The project was implemented incrementally, thirty-nine phases in total
-(Phase 0 through Phase 38), every one of them finished except the
+The project was implemented incrementally, forty phases in total
+(Phase 0 through Phase 39), every one of them finished except the
 deferred epoll reactor. The full list, with a Definition of Done and the
 exact tests behind each one, lives in [docs/PHASES.md](docs/PHASES.md) -
 this is the short version:
