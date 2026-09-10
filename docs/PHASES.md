@@ -1218,17 +1218,18 @@ due.
 
 ## Tasks
 
-* [x] `InMemoryStore` keeps an `SplMinHeap` of `[expiresAt, version, key]`,
-      so the earliest-due entry is always at the top
+* [x] `InMemoryStore` keeps an `SplMinHeap` of `[expiresAt, key]`, so the
+      earliest-due entry is always at the top
 * [x] `set()` with a TTL pushes the key; `set()` without a TTL does not
-* [x] Every `set()` stamps the key with the next store-wide version;
-      `sweepExpired()` pops heap entries and only removes a key if it is
-      still at the same version and `expiresAt` it was queued at - so an
-      overwritten key is never killed by its old TTL, and a deleted key's
-      stale heap entry is skipped rather than resurrecting it
-* [x] A key that leaves (deleted, swept, or lazily expired) is dropped from
-      the version map too, so the bookkeeping is bounded by the keys that
-      are live rather than by every key ever written
+* [x] `sweepExpired()` pops due entries and removes a key only if the
+      key's *current* expiry is still the one the entry was queued with -
+      which is the entire staleness test: an overwritten key is never
+      killed by its old TTL, and a deleted key's leftover entry finds
+      nothing to remove
+* [x] Nothing else is tracked per key. Stale heap entries are left to come
+      due and be discarded, so the bookkeeping is bounded by the keys that
+      are live plus the expiries not yet reached, never by every key ever
+      written
 * [x] `sweepExpired()` stops at the first non-due entry, leaving the whole
       scan O(due) instead of O(all keys)
 * [x] Lazy expiration in `entryOrNull()` stays untouched; a key removed
@@ -1256,8 +1257,9 @@ delete, restore) is identical to before and pinned by tests.
   - deleting a key leaves its heap entry inert
 * `InMemoryStoreTest::testAKeyWrittenAgainAfterDeletionSurvivesItsPreviousTtl`
   - a key's second life is not killed by the first life's heap entry
-* `InMemoryStoreTest::testKeysThatCameAndWentLeaveNoPerKeyBookkeepingBehind`
-  - the version map tracks live keys, not every key ever written
+* `InMemoryStoreTest::testKeysThatCameAndWentLeaveNoBookkeepingBehind`
+  - a hundred keys through all three ways of leaving, and the heap is
+  empty afterwards
 * `InMemoryStoreTest::testRestoreDropsEntriesAlreadyExpiredAtRestoreTime`
   - restore applies the documented expired-filter
 

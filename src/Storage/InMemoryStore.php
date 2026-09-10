@@ -16,32 +16,16 @@ final class InMemoryStore implements Store
     /**
      * Expiring keys ordered by when they are due, so the sweep can pop only
      * what is actually due instead of walking every entry. Each heap element
-     * is [expiresAt, version, key].
+     * is [expiresAt, key].
      *
-     * @var SplMinHeap<array{0: float, 1: int, 2: string}>
+     * Entries are never removed here when a key is overwritten or deleted -
+     * only when they come due. A stale one costs nothing: the sweep applies
+     * an entry only if the key's *current* expiry is still the one the entry
+     * was queued with, which is the whole test of whether it is stale.
+     *
+     * @var SplMinHeap<array{0: float, 1: string}>
      */
     private SplMinHeap $expirations;
-
-    /**
-     * The version each live key was last written at. A heap entry is only
-     * applied when its recorded version still matches - so a key overwritten
-     * (or deleted) since a heap push is never expired by that stale entry.
-     *
-     * A key that is gone is dropped from here rather than left behind at a
-     * bumped version: an entry per key ever written is an unbounded leak in
-     * a store whose whole point is that keys come and go, and a missing key
-     * fails the match just as well as a bumped one.
-     *
-     * @var array<string, int>
-     */
-    private array $versions = [];
-
-    /**
-     * Monotonic, store-wide rather than per-key: versions are never reused,
-     * so a key deleted and written again cannot land back on a version a
-     * heap entry from its previous life is still holding.
-     */
-    private int $lastVersion = 0;
 
     public function __construct(
         private readonly Clock $clock = new SystemClock(),
@@ -54,11 +38,8 @@ final class InMemoryStore implements Store
         $expiresAt = $ttlSeconds === null ? null : $this->clock->now() + $ttlSeconds;
         $this->data[$key] = new StoredValue($value, $expiresAt);
 
-        $version = ++$this->lastVersion;
-        $this->versions[$key] = $version;
-
         if ($expiresAt !== null) {
-            $this->expirations->insert([$expiresAt, $version, $key]);
+            $this->expirations->insert([$expiresAt, $key]);
         }
     }
 
@@ -96,7 +77,7 @@ final class InMemoryStore implements Store
             return false;
         }
 
-        unset($this->data[$key], $this->versions[$key]);
+        unset($this->data[$key]);
 
         return true;
     }
@@ -107,26 +88,26 @@ final class InMemoryStore implements Store
         $removed = 0;
 
         while (!$this->expirations->isEmpty()) {
-            [$expiresAt, $version, $key] = $this->expirations->top();
+            [$expiresAt, $key] = $this->expirations->top();
 
+            // The top of the heap is the earliest due entry, so once it is
+            // in the future every entry behind it is too - that is what
+            // makes this O(what expired) instead of O(everything stored).
             if ($expiresAt > $now) {
                 break;
             }
 
-            // The earliest due entry is past its time. Pop it; if the key is
-            // still at the version it had when queued, it is genuinely this
-            // key's current TTL and the entry is expired for real.
             $this->expirations->extract();
 
             $entry = $this->data[$key] ?? null;
 
-            if (
-                $entry !== null
-                && $entry->expiresAt !== null
-                && $entry->expiresAt === $expiresAt
-                && ($this->versions[$key] ?? 0) === $version
-            ) {
-                unset($this->data[$key], $this->versions[$key]);
+            // The key may have been deleted, overwritten with a new TTL, or
+            // overwritten without one since this entry was queued, leaving
+            // the entry stale. Comparing the entry's due time against the
+            // key's current one settles all three: they match only when the
+            // key is still living by exactly the expiry that just came due.
+            if ($entry !== null && $entry->expiresAt === $expiresAt) {
+                unset($this->data[$key]);
                 $removed++;
             }
         }
@@ -160,7 +141,6 @@ final class InMemoryStore implements Store
     public function restore(array $entries): void
     {
         $this->data = [];
-        $this->versions = [];
         $this->expirations = new SplMinHeap();
 
         foreach ($entries as $key => $entry) {
@@ -173,9 +153,7 @@ final class InMemoryStore implements Store
             $this->data[$key] = new StoredValue($entry['value'], $expiresAt);
 
             if ($expiresAt !== null) {
-                $version = ++$this->lastVersion;
-                $this->versions[$key] = $version;
-                $this->expirations->insert([$expiresAt, $version, $key]);
+                $this->expirations->insert([$expiresAt, $key]);
             }
         }
     }
@@ -193,7 +171,7 @@ final class InMemoryStore implements Store
         }
 
         if ($entry->isExpired($this->clock->now())) {
-            unset($this->data[$key], $this->versions[$key]);
+            unset($this->data[$key]);
 
             return null;
         }

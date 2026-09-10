@@ -8,6 +8,7 @@ use App\Storage\InMemoryStore;
 use App\Tests\Support\FakeClock;
 use PHPUnit\Framework\TestCase;
 use ReflectionProperty;
+use SplMinHeap;
 
 final class InMemoryStoreTest extends TestCase
 {
@@ -187,7 +188,7 @@ final class InMemoryStoreTest extends TestCase
         self::assertSame(0, $store->sweepExpired());
     }
 
-    public function testKeysThatCameAndWentLeaveNoPerKeyBookkeepingBehind(): void
+    public function testKeysThatCameAndWentLeaveNoBookkeepingBehind(): void
     {
         $clock = new FakeClock(1000.0);
         $store = new InMemoryStore($clock);
@@ -203,11 +204,15 @@ final class InMemoryStoreTest extends TestCase
         self::assertNull($store->get('read:0')); // lazily expired on access
         self::assertSame(100, $store->sweepExpired());
 
-        // A cache churning through short-lived keys must not accumulate one
-        // entry per key it has ever held - whichever of the three ways a key
-        // can leave took it away.
-        $versions = new ReflectionProperty($store, 'versions');
-        self::assertSame([], $versions->getValue($store));
+        // A cache churning through short-lived keys must not accumulate
+        // anything per key it has ever held - whichever of the three ways a
+        // key can leave took it away. The heap is where they would pile up,
+        // since nothing removes an entry there before it comes due.
+        $expirations = new ReflectionProperty($store, 'expirations');
+        $heap = $expirations->getValue($store);
+        self::assertInstanceOf(SplMinHeap::class, $heap);
+        self::assertCount(0, $heap);
+        self::assertSame([], $store->snapshot());
     }
 
     public function testAKeyWrittenAgainAfterDeletionSurvivesItsPreviousTtl(): void
