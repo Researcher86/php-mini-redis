@@ -312,11 +312,16 @@ final class RedisServerTest extends TestCase
 
     public function testIdleConnectionsAreClosedAfterTheTimeoutButActiveOnesAreNot(): void
     {
-        $loop = new SelectLoop();
+        // One clock for the loop's timers, the connections' activity stamps
+        // and the idle check, so the timeout is decided by this test rather
+        // than by how long PHPUnit took between two statements.
+        $clock = new FakeClock(1000.0);
+        $loop = new SelectLoop($clock);
         $server = new RedisServer(
             new ServerConfig(host: '127.0.0.1', port: 0),
             $loop,
             idleTimeoutSeconds: 0.3,
+            clock: $clock,
         );
 
         try {
@@ -325,18 +330,16 @@ final class RedisServerTest extends TestCase
             $idleConnection = $server->acceptClient(5);
             self::assertInstanceOf(ClientConnection::class, $idleConnection);
 
-            usleep(400_000);
+            $clock->advance(0.4);
 
             $activeClient = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
             self::assertIsResource($activeClient, $errstr);
             $activeConnection = $server->acceptClient(5);
             self::assertInstanceOf(ClientConnection::class, $activeConnection);
 
-            // Touch the active connection's activity right before the check,
-            // well within the timeout, while the idle one has been silent
-            // ever since it connected. Both the touch and the idle check
-            // below happen within this single tick(), so PHPUnit's own
-            // overhead between statements cannot affect the comparison.
+            // The active connection was accepted 0.4s into the run and the
+            // idle one at the start; the check below is the first the timer
+            // gets to make, and only one of them is past 0.3s of silence.
             fwrite($activeClient, "*1\r\n\$4\r\nPING\r\n");
             $loop->tick(1);
 
@@ -1391,11 +1394,13 @@ final class RedisServerTest extends TestCase
      */
     public function testAnIdleTimedOutSubscriberIsUnsubscribedFromItsChannels(): void
     {
-        $loop = new SelectLoop();
+        $clock = new FakeClock(1000.0);
+        $loop = new SelectLoop($clock);
         $server = new RedisServer(
             new ServerConfig(host: '127.0.0.1', port: 0),
             $loop,
             idleTimeoutSeconds: 0.2,
+            clock: $clock,
         );
 
         try {
@@ -1409,7 +1414,7 @@ final class RedisServerTest extends TestCase
             fread($subscriberClient, 1024);
 
             // Silence until the idle timeout fires and closes it.
-            usleep(400_000);
+            $clock->advance(0.4);
             $loop->tick(0.5);
             self::assertSame(ConnectionState::Closed, $subscriberConnection->state());
 

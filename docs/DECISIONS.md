@@ -149,6 +149,20 @@ many bytes `fwrite()` actually accepted. Naming them for their direction
 keeps each call site's intent obvious at the point of use, at the cost of a
 small amount of duplication between two ~40-line classes.
 
+## One clock reaches everything that measures time
+
+`Clock` is injected into `SelectLoop`, `InMemoryStore`, `RedisServer` -
+and `ClientConnection`, which is the one that had to be added later.
+Connections stamped their own last-activity time with `microtime(true)`
+while the idle check compared it against the server's `Clock`: two clocks
+for one decision, so a test could move only one of them and the timeout
+could not be driven deterministically at all. Both idle-timeout tests
+used to sleep for real (400 ms each) and compare against wall time.
+
+They now advance a `FakeClock` and run in microseconds. The rule that
+came out of it: whatever records a timestamp must be given the same clock
+as whatever reads it, or the seam is decorative.
+
 ## The idle-timeout and expiration-sweep timers share one interval parameter
 
 `RedisServer`'s `idleTimeoutSeconds` doubles as both the threshold *and*

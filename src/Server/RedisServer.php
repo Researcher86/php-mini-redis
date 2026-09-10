@@ -256,7 +256,7 @@ final class RedisServer
             return null;
         }
 
-        $connection = new ClientConnection($socket);
+        $connection = new ClientConnection($socket, $this->clock);
         $connection->setState(ConnectionState::Connected);
         $this->connections->add($connection);
         $this->watchForIncomingData($connection);

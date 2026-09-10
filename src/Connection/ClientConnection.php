@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Connection;
 
+use App\Support\Clock;
+use App\Support\SystemClock;
+
 /**
  * Represents one connected client: its socket, its buffers, its state and
  * when it was last active.
@@ -18,11 +21,16 @@ final class ClientConnection
     public function __construct(
         /** @var resource */
         private readonly mixed $socket,
+        // The same clock the server checks idleness against. Two clocks -
+        // one recording activity, one deciding what counts as idle - is a
+        // timeout that cannot be tested deterministically, since a test can
+        // only ever move one of them.
+        private readonly Clock $clock = new SystemClock(),
     ) {
         $this->state = ConnectionState::New;
         $this->readBuffer = new ReadBuffer();
         $this->writeBuffer = new WriteBuffer();
-        $this->lastActivityAt = microtime(true);
+        $this->lastActivityAt = $this->clock->now();
     }
 
     /**
@@ -72,7 +80,7 @@ final class ClientConnection
      */
     private function touch(): void
     {
-        $this->lastActivityAt = microtime(true);
+        $this->lastActivityAt = $this->clock->now();
     }
 
     public function readBuffer(): ReadBuffer
