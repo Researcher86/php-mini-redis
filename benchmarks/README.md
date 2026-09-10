@@ -36,6 +36,19 @@ Forks 20 subscriber connections on one shared channel, publishes 50
 messages from a publisher, and reports total deliveries and deliveries/s -
 how the server scales with subscriber count.
 
+## Fairness under a competing pipeline
+
+```bash
+make up
+docker compose exec php php benchmarks/fairness.php
+```
+
+Forks a client that pipelines 100,000 commands in one go, and times an
+ordinary `PING` round trip on a second connection throughout - idle
+first, then during the flood - alongside the loop's own counters
+(passes, busy/idle, worst single pass). Answers what one client's bulk
+work costs every other client on a single-threaded server.
+
 ## Memory
 
 ```bash

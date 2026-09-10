@@ -276,6 +276,34 @@ taken by the *server's* view of a connected client
 (`App\Connection\ClientConnection`) - the same split, and the same name,
 `php-worker-pool` uses for its own `WorkerPoolClient`.
 
+## No per-pass command budget: the bound is already there, in bytes
+
+Bounded reply batching left an obvious next lever - a limit on how many
+commands one pass of the loop may execute before returning to
+`stream_select()`, so a huge pipeline cannot hold the loop away from
+everyone else. It was measured before being built
+(`benchmarks/fairness.php`): one client pipelines 100,000 commands while
+an ordinary connection times a `PING` round trip throughout.
+
+Latency goes from 0.11 ms to 2.5 ms at p50 and stops there - p99 2.9 ms,
+worst 3.3 ms, with the loop's own worst single pass at 4.5 ms. A
+competing client waits about one pass, and a pass under that load is
+about a millisecond: 100,000 commands spread over 807 passes, roughly
+125 each, because that is how much of the pipeline has arrived by the
+time each pass looks at the socket.
+
+The upper bound exists already, expressed in bytes: `READ_CHUNK_SIZE`
+caps what a single readable event can take in, which for `PING` is about
+4,600 commands. Setting it to 8 KiB and to 1 MiB moved none of the
+numbers, since the network does not deliver that much between two passes
+anyway.
+
+So the budget stays unbuilt. It would bound a case no measurement here
+reaches - a client fast enough to keep the read buffer full - and would
+cost per-connection state plus a continuation path, to improve on a
+worst pass of 4.5 ms. If that case ever shows up, the first lever is the
+read chunk, which is one constant rather than a mechanism.
+
 ## Backpressure cannot throttle a publisher, so subscribers get a hard limit
 
 Phase 26's backpressure answers one question - "this connection asks for

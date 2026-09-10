@@ -397,9 +397,9 @@ php-mini-redis/
 │   ├── client.php              # one-shot RESP client, for the demo above
 │   └── bench.php               # throughput/latency benchmark - docs/BENCHMARKS.md
 │
-├── benchmarks/                 # load tests: pipeline, Pub/Sub fan-out, memory
+├── benchmarks/                 # load tests: pipeline, fan-out, fairness, memory
 │   ├── README.md
-│   ├── pipeline.php, pubsub-fanout.php, memory.php
+│   ├── pipeline.php, pubsub-fanout.php, fairness.php, memory.php
 │
 ├── examples/                   # standalone scripts, one question each
 │   ├── bootstrap.php

@@ -154,6 +154,56 @@ subscriber's socket - so this number is really "how fast can one
 single-threaded loop touch 20 sockets", plus the publisher's own round
 trip per message, which is serial by construction here.
 
+### Fairness: what one client's pipeline costs everyone else
+
+The question a single-threaded server has to answer honestly: while the
+loop is busy serving somebody's 100,000-command pipeline, what does an
+ordinary client's `PING` cost? `benchmarks/fairness.php` forks the flood
+client and times a plain round trip throughout - once with the server
+idle, then continuously while the flood runs - and reads the loop's own
+counters over the same stretch.
+
+| | p50 | p95 | p99 | max |
+|---|---|---|---|---|
+| PING, server idle | 0.113 ms | 0.331 ms | 0.745 ms | 0.846 ms |
+| PING, during the flood | 2.513 ms | 2.835 ms | 2.906 ms | 3.322 ms |
+
+100,000 pipelined commands are served in ~0.83s, and over that stretch:
+
+```text
+passes:             807
+busy / idle:        0.727s / 0.818s
+mean work per pass: 0.901 ms
+mean wait per pass: 1.013 ms
+worst single pass:  4.518 ms
+```
+
+**Latency grows by about 20x and stays bounded.** A competing client waits
+roughly one pass of the loop, and a pass under this load is about a
+millisecond of work: 100,000 commands are spread over 807 passes, ~125
+each, because that is how much of the pipeline has arrived by the time
+each pass looks. The tail is tight - p50 2.5 ms against p99 2.9 ms - so
+nobody is starved; they are queued, briefly, behind work that is already
+in progress.
+
+The loop is also idle for slightly more of that stretch than it is busy
+(0.82s against 0.73s), which says the bottleneck is not the server's own
+execution but how fast the flood client can push and pull bytes.
+
+**Why there is no `maxCommandsPerTick`.** The obvious next lever is a
+budget on commands per pass. Measured, there is nothing for it to fix
+here: mean work per pass is under a millisecond and the worst pass over
+three runs was 6.5 ms. The upper bound already exists and is expressed in
+bytes rather than commands - `READ_CHUNK_SIZE` (64 KiB) caps what one
+readable event can take in, which for `PING` is about 4,600 commands.
+Setting it to 8 KiB and to 1 MiB changed none of the numbers above, since
+the network never delivers that much between two passes anyway. A command
+budget would bound the pathological case (a client fast enough to keep
+the buffer full), at the cost of state and a continuation path for
+something no measurement here reaches - so it stays unbuilt, and the
+first lever if it is ever needed is the read chunk, which is one
+constant.
+
 ### Memory
 
 100,000 keys of 64 bytes written over one connection:

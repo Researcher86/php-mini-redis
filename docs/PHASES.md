@@ -1501,6 +1501,10 @@ list; all three are what "event-driven" actually has to get right.
 * [x] `ClientConnection` takes the server's `Clock` instead of calling
       `microtime()` itself, so the idle timeout is decided by one clock and
       its two tests advance a `FakeClock` rather than sleeping 400 ms each
+* [x] `benchmarks/fairness.php` - and the experiment it settled: a
+      per-pass command budget was measured for rather than assumed, and
+      not built, because the bound it would add already exists as
+      `READ_CHUNK_SIZE` (see BENCHMARKS.md)
 
 ## Definition of Done
 
