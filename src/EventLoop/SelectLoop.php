@@ -92,34 +92,16 @@ final class SelectLoop implements EventLoop
 
         $wait = $this->shorterWait($timeoutSeconds, $this->timers->nextDueIn($this->clock->now()));
 
-        if ($read === [] && $write === []) {
-            if ($wait !== null) {
-                usleep((int) ($wait * 1_000_000));
-            }
-
-            $this->timers->tick($this->clock->now());
-            $this->metrics->recordIteration(0.0, $wait ?? 0.0);
-
-            return 0;
-        }
-
-        $except = null;
-        $seconds = $wait === null ? null : (int) floor($wait);
-        $microseconds = $wait === null ? null : (int) (($wait - $seconds) * 1_000_000);
-
         $waitStart = hrtime(true);
-        $ready = @stream_select($read, $write, $except, $seconds, $microseconds);
+        $ready = $this->waitForReadiness($read, $write, $wait);
         $idleSeconds = (hrtime(true) - $waitStart) / 1_000_000_000;
 
         $busyStart = hrtime(true);
         $this->timers->tick($this->clock->now());
 
-        if ($ready === false || $ready === 0) {
-            $this->metrics->recordIteration(0.0, $idleSeconds);
-
-            return 0;
-        }
-
+        // stream_select() narrows both arrays to whatever became ready, so
+        // a pass that timed out simply has nothing to loop over - it needs
+        // no early return of its own.
         foreach ($read as $stream) {
             $id = get_resource_id($stream);
 
@@ -174,14 +156,46 @@ final class SelectLoop implements EventLoop
         }
     }
 
-    private function shorterWait(?float $a, ?float $b): ?float
+    /**
+     * Blocks until one of the registered streams is ready or $wait elapses,
+     * and returns how many are - narrowing $read and $write to exactly
+     * those, the way stream_select() reports its answer.
+     *
+     * With nothing registered there is nothing to select on, so the wait
+     * becomes a plain sleep: the loop still has to come back for its
+     * timers, which are then the only thing that can be due.
+     *
+     * @param list<resource> $read
+     * @param list<resource> $write
+     */
+    private function waitForReadiness(array &$read, array &$write, ?float $wait): int
     {
-        if ($a === null) {
-            return $b;
+        if ($read === [] && $write === []) {
+            if ($wait !== null) {
+                usleep((int) ($wait * 1_000_000));
+            }
+
+            return 0;
         }
 
-        if ($b === null) {
-            return $a;
+        // stream_select() wants whole seconds plus a microsecond remainder
+        // rather than one float; null for both means "wait indefinitely".
+        $seconds = $wait === null ? null : (int) floor($wait);
+        $microseconds = $wait === null ? null : (int) (($wait - $seconds) * 1_000_000);
+
+        $except = null;
+        $ready = @stream_select($read, $write, $except, $seconds, $microseconds);
+
+        // False means the wait was cut short by a signal (EINTR) - which is
+        // how a shutdown request reaches a loop sitting in select(). Nothing
+        // is ready; the next pass waits again.
+        return $ready === false ? 0 : $ready;
+    }
+
+    private function shorterWait(?float $a, ?float $b): ?float
+    {
+        if ($a === null || $b === null) {
+            return $a ?? $b;
         }
 
         return min($a, $b);
