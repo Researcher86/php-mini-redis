@@ -24,8 +24,8 @@ use App\Metrics\ServerMetrics;
 use App\Persistence\ForkingSnapshotWorker;
 use App\Persistence\SnapshotStore;
 use App\Protocol\RespEncoder;
+use App\Protocol\ProtocolException;
 use App\Protocol\RespParser;
-use App\Protocol\RespStreamReader;
 use App\Protocol\RespType;
 use App\Protocol\RespValue;
 use App\PubSub\ChannelRegistry;
@@ -54,12 +54,25 @@ final class RedisServer
      */
     private const int COMMAND_FRAMING_HEADROOM = 1024;
 
+    /**
+     * How many bytes of replies are collected before they are handed to the
+     * connection - the size of one write, and the granularity at which
+     * backpressure gets a say.
+     *
+     * Large enough that a pipeline is answered in whole packets rather than
+     * one small write per command (see the Nagle problem in
+     * BENCHMARKS.md), and small enough that a client asking for far more
+     * than it reads cannot make the server build the answer to all of it
+     * in memory first.
+     */
+    private const int REPLY_BATCH_BYTES = 256 * 1024;
+
     private readonly ServerSocket $socket;
     private readonly ConnectionManager $connections;
     private readonly EventLoop $eventLoop;
     private readonly CommandDispatcher $dispatcher;
     private readonly Store $store;
-    private readonly RespStreamReader $streamReader;
+    private readonly RespParser $parser;
     private readonly RespEncoder $encoder;
     private readonly ChannelRegistry $channels;
     private readonly TransactionManager $transactions;
@@ -131,9 +144,9 @@ final class RedisServer
         // rejected on its declared length - before its body is sent -
         // instead of being answered with "too big buffer" after half a
         // megabyte of it has already been read.
-        $this->streamReader = new RespStreamReader(new RespParser(
+        $this->parser = new RespParser(
             maxBulkStringBytes: max(1, $this->maxReadBufferBytes - self::COMMAND_FRAMING_HEADROOM),
-        ));
+        );
         $this->encoder = new RespEncoder();
         $this->snapshots = $snapshotPath === null ? null : new SnapshotStore($snapshotPath);
         $this->snapshotWorker = $this->snapshots === null ? null : new ForkingSnapshotWorker($this->snapshots, $this->logger);
@@ -401,26 +414,65 @@ final class RedisServer
         });
     }
 
+    /**
+     * Executes the complete commands sitting in the connection's read
+     * buffer, answering in batches rather than one reply per command (see
+     * REPLY_BATCH_BYTES) and stopping early if the connection is dropped or
+     * paused along the way.
+     *
+     * Stopping matters: a client can ask for far more than it reads - 2 KB
+     * of `GET` against a 200 KB value is 20 MB of replies - and executing
+     * the whole pipeline before handing anything over means building all of
+     * that in memory first, with backpressure only consulted once it is too
+     * late to matter. Commands left unexecuted stay in the read buffer,
+     * which is not being read from while the connection is paused, and are
+     * picked up again when it resumes.
+     */
     private function processBufferedCommands(ClientConnection $connection): void
     {
-        [$values, $consumed, $error] = $this->streamReader->readAll($connection->readBuffer()->contents());
-
-        if ($consumed > 0) {
-            $connection->readBuffer()->consume($consumed);
-        }
-
-        // One reply per command, but one write for all of them: a pipeline
-        // answered command-by-command is a stream of tiny packets, and TCP
-        // holds small writes back (Nagle) until the previous one is
-        // acknowledged - which the client, still reading, is in no hurry to
-        // do. Batching the replies of one read into a single write is what
-        // makes a pipeline faster than the round trips it replaces, rather
-        // than slower.
+        $buffer = $connection->readBuffer()->contents();
+        $offset = 0;
         $replies = '';
+        $error = null;
 
-        foreach ($values as $value) {
+        while (true) {
+            try {
+                $parsed = $this->parser->parse($buffer, $offset);
+            } catch (ProtocolException $exception) {
+                $error = $exception;
+
+                break;
+            }
+
+            // An incomplete value at the end of the buffer: it stays there
+            // until the rest of it arrives.
+            if ($parsed === null) {
+                break;
+            }
+
+            [$value, $offset] = $parsed;
             $replies .= $this->execute($connection, $value);
+
+            if (strlen($replies) < self::REPLY_BATCH_BYTES) {
+                continue;
+            }
+
+            $connection->readBuffer()->consume($offset);
+            $buffer = substr($buffer, $offset);
+            $offset = 0;
+
+            $this->queueForWrite($connection, $replies);
+            $replies = '';
+
+            // The batch just written may have dropped the connection, or
+            // filled its write buffer past the pause level - either way the
+            // rest of the pipeline is not this turn's work.
+            if ($connection->state() === ConnectionState::Closed || $this->isPaused($connection)) {
+                return;
+            }
         }
+
+        $connection->readBuffer()->consume($offset);
 
         if ($replies !== '') {
             $this->queueForWrite($connection, $replies);
@@ -613,14 +665,34 @@ final class RedisServer
         $this->disconnectClient($subscriber);
     }
 
+    private function isPaused(ClientConnection $connection): bool
+    {
+        return isset($this->pausedConnections[$connection->id()]);
+    }
+
     private function resumeReadingIfPaused(ClientConnection $connection): void
     {
-        if (!isset($this->pausedConnections[$connection->id()])) {
+        if (!$this->isPaused($connection)) {
             return;
         }
 
         unset($this->pausedConnections[$connection->id()]);
         $this->watchForIncomingData($connection);
+
+        if ($connection->readBuffer()->length() === 0) {
+            return;
+        }
+
+        // Commands that arrived before the pause and were never executed.
+        // Nothing else will pick them up: the client is waiting for their
+        // replies, so it is not going to send anything that would make this
+        // connection readable again. Scheduled rather than run here, since
+        // this is reached from inside a write flush.
+        $this->eventLoop->after(0.0, function () use ($connection): void {
+            if ($connection->state() !== ConnectionState::Closed) {
+                $this->processBufferedCommands($connection);
+            }
+        });
     }
 
     /**

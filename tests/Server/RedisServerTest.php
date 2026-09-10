@@ -1130,6 +1130,93 @@ final class RedisServerTest extends TestCase
         }
     }
 
+    public function testAPipelineIsAnsweredInBatchesRatherThanBuiltWhole(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(
+            new ServerConfig(host: '127.0.0.1', port: 0),
+            $loop,
+            maxWriteBufferBytes: 1024 * 1024,
+        );
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+            $connection = $server->acceptClient(5);
+            self::assertInstanceOf(ClientConnection::class, $connection);
+
+            // Two kilobytes of commands asking for twenty megabytes of
+            // replies, from a client that reads none of them. Executing the
+            // whole pipeline before handing anything over would build all
+            // twenty in memory, with backpressure consulted only once it no
+            // longer matters.
+            $server->store()->set('big', str_repeat('x', 200 * 1024));
+            fwrite($client, str_repeat("*2\r\n\$3\r\nGET\r\n\$3\r\nbig\r\n", 100));
+            usleep(50_000);
+            $loop->tick(0.2);
+
+            // Whatever is queued is the pause level plus at most one batch,
+            // nowhere near the twenty megabytes asked for.
+            self::assertLessThan(2 * 1024 * 1024, $connection->writeBuffer()->length());
+
+            // And the commands that were not executed are still there,
+            // waiting for the connection to catch up.
+            self::assertGreaterThan(0, $connection->readBuffer()->length());
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
+
+    public function testACommandLeftOverFromAPausedPipelineRunsOnceReadingResumes(): void
+    {
+        $loop = new SelectLoop();
+        $server = new RedisServer(
+            new ServerConfig(host: '127.0.0.1', port: 0),
+            $loop,
+            maxWriteBufferBytes: 512 * 1024,
+            lowWriteBufferBytes: 1024,
+        );
+
+        try {
+            $client = @stream_socket_client('tcp://' . $server->localAddress(), $errno, $errstr, 5);
+            self::assertIsResource($client, $errstr);
+            stream_set_chunk_size($client, 1024 * 1024);
+            $connection = $server->acceptClient(5);
+            self::assertInstanceOf(ClientConnection::class, $connection);
+
+            // A pipeline whose replies pause the connection partway through,
+            // with one command at the end whose effect is visible in the
+            // store rather than in a reply nobody is reading.
+            $server->store()->set('big', str_repeat('x', 200 * 1024));
+            fwrite(
+                $client,
+                str_repeat("*2\r\n\$3\r\nGET\r\n\$3\r\nbig\r\n", 40)
+                . "*3\r\n\$3\r\nSET\r\n\$6\r\nmarker\r\n\$4\r\ndone\r\n",
+            );
+            usleep(50_000);
+            $loop->tick(0.2);
+
+            self::assertNull($server->store()->get('marker'), 'The pipeline should not have run to the end yet.');
+            self::assertGreaterThan(0, $connection->readBuffer()->length());
+
+            // The client catches up; nothing new arrives on this connection,
+            // so only the resumed pipeline can finish the work.
+            for ($i = 0; $i < 200 && $server->store()->get('marker') === null; $i++) {
+                fread($client, 1024 * 1024);
+                $loop->tick(0.05);
+            }
+
+            self::assertSame('done', $server->store()->get('marker'));
+            self::assertSame(0, $connection->readBuffer()->length());
+
+            fclose($client);
+        } finally {
+            $server->stop();
+        }
+    }
+
     public function testASlowReaderIsPausedThenResumedOnceItsWriteBufferDrains(): void
     {
         $loop = new SelectLoop();
