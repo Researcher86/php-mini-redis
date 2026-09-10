@@ -30,6 +30,15 @@ machine over the loopback interface - not a tuned, isolated benchmark rig.
 Treat every number as "what this container measured", not an absolute
 claim about the implementation's ceiling on different hardware.
 
+**Run-to-run spread is large enough to matter.** The same commit measured
+twice on the same machine, minutes apart, produced 22.9k and 13.4k
+requests/sec for a single serial client, depending on nothing more than
+what else the laptop was doing. So a difference under about 1.5x between
+two runs here says nothing at all; the changes recorded below as
+improvements were each 5x or more, and were confirmed by measuring the
+tree before and after the change back to back rather than against a
+number written down earlier.
+
 ## Results
 
 | Command | Clients | Requests | Total | Req/s | p50 | p95 | p99 |
