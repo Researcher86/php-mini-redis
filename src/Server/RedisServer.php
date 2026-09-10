@@ -391,15 +391,21 @@ final class RedisServer
             $connection->readBuffer()->consume($consumed);
         }
 
-        foreach ($values as $value) {
-            // Answering one command can drop the connection - a write that
-            // fails because the peer has gone away closes it on the spot.
-            // The rest of the pipeline then has nobody left to answer.
-            if ($connection->state() === ConnectionState::Closed) {
-                return;
-            }
+        // One reply per command, but one write for all of them: a pipeline
+        // answered command-by-command is a stream of tiny packets, and TCP
+        // holds small writes back (Nagle) until the previous one is
+        // acknowledged - which the client, still reading, is in no hurry to
+        // do. Batching the replies of one read into a single write is what
+        // makes a pipeline faster than the round trips it replaces, rather
+        // than slower.
+        $replies = '';
 
-            $this->executeValue($connection, $value);
+        foreach ($values as $value) {
+            $replies .= $this->execute($connection, $value);
+        }
+
+        if ($replies !== '') {
+            $this->queueForWrite($connection, $replies);
         }
 
         if ($error === null || $connection->state() === ConnectionState::Closed) {
@@ -416,16 +422,22 @@ final class RedisServer
         $this->sendErrorAndDisconnect($connection, 'ERR Protocol error: ' . $error->getMessage());
     }
 
-    private function executeValue(ClientConnection $connection, RespValue $value): void
+    /**
+     * Runs one command and returns its encoded reply for the caller to
+     * write, rather than writing it here - see processBufferedCommands().
+     */
+    private function execute(ClientConnection $connection, RespValue $value): string
     {
         $connection->setState(ConnectionState::Processing);
 
+        // Rejected before Command::fromRespValue() builds anything from it:
+        // the argument count is knowable from the array itself, and this
+        // limit exists precisely so an absurd one is never materialized.
         if ($value->type === RespType::Array && is_array($value->value) && count($value->value) > $this->maxArgumentsPerCommand) {
             $this->metrics->recordError();
             $connection->setState(ConnectionState::Writing);
-            $this->queueForWrite($connection, $this->encoder->encode(RespValue::error('ERR too many arguments')));
 
-            return;
+            return $this->encoder->encode(RespValue::error('ERR too many arguments'));
         }
 
         try {
@@ -452,7 +464,8 @@ final class RedisServer
         }
 
         $connection->setState(ConnectionState::Writing);
-        $this->queueForWrite($connection, $this->encoder->encode($result));
+
+        return $this->encoder->encode($result);
     }
 
     /**
