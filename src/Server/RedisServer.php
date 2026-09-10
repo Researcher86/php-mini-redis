@@ -524,25 +524,23 @@ final class RedisServer
             $this->metrics->recordBytesWritten($written);
         }
 
+        // Drained to the low watermark: the reader has caught up far enough
+        // to be let back in, even if some of the response is still queued.
+        // An empty buffer is under any watermark, so a full flush and a
+        // partial one resume by the same rule.
+        if ($buffer->length() <= $this->lowWriteBufferBytes) {
+            $this->resumeReadingIfPaused($connection);
+        }
+
         if ($buffer->isEmpty()) { // @phpstan-ignore if.alwaysFalse (PHPStan can't see WriteBuffer::consume() change the buffer)
             $this->eventLoop->removeWritable($connection->socket());
             $connection->setState(ConnectionState::Reading);
-            $this->resumeReadingIfPaused($connection);
 
             return;
         }
 
-        // Backlog drained to the low watermark: the reader has caught up
-        // far enough to be let back in, even though there is still some
-        // of the response queued. The writable listener below stays in
-        // place until the buffer fully empties.
-        if (
-            isset($this->pausedConnections[$connection->id()])
-            && $buffer->length() <= $this->lowWriteBufferBytes
-        ) {
-            $this->resumeReadingIfPaused($connection);
-        }
-
+        // Still holding bytes: come back when the socket has room again,
+        // rather than blocking on a peer that is not reading.
         $this->eventLoop->onWritable($connection->socket(), function () use ($connection): void {
             $this->flushWriteBuffer($connection);
         });
