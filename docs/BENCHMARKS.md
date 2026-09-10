@@ -7,9 +7,9 @@ instead of a guess.
 
 `bin/bench.php` forks `--clients` child processes (via `pcntl_fork()` -
 the same primitive the rest of this codebase's forked-worker phases are
-built on), each opening one real connection and running `--requests`
-synchronous request/reply round trips against it: send, wait for the
-reply, send the next. Every child times its own round trips and writes
+built on), each opening one `RedisClient` connection and running
+`--requests` synchronous request/reply round trips against it: send, wait
+for the reply, send the next. Every child times its own round trips and writes
 them to a temp file; the parent waits for every child to exit, aggregates
 every latency sample, and reports throughput and percentiles.
 
@@ -34,12 +34,12 @@ claim about the implementation's ceiling on different hardware.
 
 | Command | Clients | Requests | Total | Req/s | p50 | p95 | p99 |
 |---|---|---|---|---|---|---|---|
-| PING | 1 | 2,000 | 2,000 | 21,517 | 0.031 ms | 0.080 ms | 0.163 ms |
-| PING | 10 | 2,000 | 20,000 | 40,376 | 0.213 ms | 0.427 ms | 0.463 ms |
-| PING | 50 | 500 | 25,000 | 40,733 | 1.174 ms | 1.293 ms | 2.143 ms |
-| SET | 10 | 1,000 | 10,000 | 35,743 | 0.238 ms | 0.478 ms | 0.512 ms |
-| GET | 10 | 1,000 | 10,000 | 37,094 | 0.231 ms | 0.463 ms | 0.505 ms |
-| INCR | 10 | 1,000 | 10,000 | 35,029 | 0.240 ms | 0.481 ms | 0.527 ms |
+| PING | 1 | 2,000 | 2,000 | 22,883 | 0.038 ms | 0.048 ms | 0.060 ms |
+| PING | 10 | 2,000 | 20,000 | 38,625 | 0.223 ms | 0.449 ms | 0.481 ms |
+| PING | 50 | 500 | 25,000 | 38,040 | 1.254 ms | 1.363 ms | 2.294 ms |
+| SET | 10 | 1,000 | 10,000 | 30,947 | 0.272 ms | 0.545 ms | 0.587 ms |
+| GET | 10 | 1,000 | 10,000 | 33,221 | 0.252 ms | 0.507 ms | 0.542 ms |
+| INCR | 10 | 1,000 | 10,000 | 30,346 | 0.272 ms | 0.549 ms | 0.619 ms |
 
 ## Reading these numbers
 
@@ -88,33 +88,52 @@ this same container.
 ### Pipelining
 
 Measured from one connection sending a batch of PINGs, then reading all
-replies:
+replies. Every batch size runs the same 5,000 commands, so the sizes can
+be compared against each other rather than against different amounts of
+work:
 
 | Batch size | Req/s |
 |---|---|
-| 1 | 620 |
-| 10 | 26,597 |
-| 100 | 46,817 |
-| 1,000 | 50,945 |
-| 5,000 | 53,846 |
+| 1 | 24,355 |
+| 10 | 82,416 |
+| 100 | 108,809 |
+| 1,000 | 116,114 |
+| 5,000 | 120,593 |
 
-**A single request/reply round trip caps at ~620/s** (the serial
-send-wait-read pattern) - the same wall one serial client hits in the
-main benchmark. Pipelining removes that wait: from a batch of 100 upward
-the same connection sustains ~50k/s, an ~80x improvement. The remaining
-gap to the main benchmark's ~35-40k/s at 10 clients is the same event-loop
-serialization as always.
+**A batch of one is a round trip**, and lands where one serial client
+lands in the main benchmark above (~22k/s) - it is the same
+send-wait-read pattern under a different name. Pipelining removes the
+waiting: ten commands per batch more than triples throughput, and from a
+hundred upward the same single connection sustains 110-120k/s, past what
+ten separate connections manage, because none of it is spent waiting for
+a round trip.
+
+Two things had to be fixed before these numbers looked like this, and
+both are worth knowing about because neither is visible in a profile:
+
+- The server used to answer each command in a pipeline with its own
+  `fwrite()`. A pipeline is then a stream of tiny packets, and TCP's
+  Nagle algorithm holds each one back until the previous is acknowledged
+  - so pipelining was *slower* than the round trips it replaces (500
+  pipelined PINGs at 0.5x the speed of 500 separate ones). The replies of
+  one read now go out together.
+- With that fixed, a batch of 1,000 still sat at 21k/s while a batch of
+  100 did 100k: a batch that large arrives in several reads, so it is
+  answered in several writes, and Nagle held every write after the first
+  for a delayed ACK's worth of time - a stable 47 ms per batch. Both ends
+  now set `tcp_nodelay`, the way real Redis does.
 
 ### Pub/Sub fan-out
 
 | Subscribers | Messages | Deliveries | Deliveries/s |
 |---|---|---|---|
-| 20 | 50 | 1,000 | 52,088 |
+| 20 | 50 | 1,000 | 34,140 |
 
 20 subscribers on one channel, 50 published messages: 1,000 deliveries in
-~19 ms. Fan-out is the dominant cost - one PUBLISH writes to every
+~29 ms. Fan-out is the dominant cost - one PUBLISH writes to every
 subscriber's socket - so this number is really "how fast can one
-single-threaded loop touch 20 sockets".
+single-threaded loop touch 20 sockets", plus the publisher's own round
+trip per message, which is serial by construction here.
 
 ### Memory
 
@@ -122,12 +141,12 @@ single-threaded loop touch 20 sockets".
 
 | | RSS |
 |---|---|
-| Before | 28.43 MiB |
+| Before | 28.19 MiB |
 | After | 56.83 MiB |
 | Peak | 94.17 MiB |
-| Per key | ~297 B |
+| Per key | ~300 B |
 
-The write rate (~14k writes/s) is below the PING/SET rate from the main
+The write rate (~21k writes/s) is below the PING/SET rate from the main
 benchmark because each SET here also serializes a fresh 100+ byte value.
 The per-key cost includes the key string, the `StoredValue` object, and
 the `data` array slot, plus PHP's allocator overhead for ~100k objects;
