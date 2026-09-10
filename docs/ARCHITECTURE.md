@@ -1254,7 +1254,6 @@ Restore State
 | `ConnectionManager`           | Track active connections                       |
 | `ReadBuffer` / `WriteBuffer`  | Hold bytes until a value is complete / sent    |
 | `RespValue` / `RespParser`    | Convert bytes into structured RESP values      |
-| `RespStreamReader`            | Pull every complete value out of a buffer      |
 | `RespEncoder`                 | Convert results back into RESP                 |
 | `Command`                     | A parsed command: name + arguments             |
 | `CommandDispatcher`           | Route a Command to its handler                 |

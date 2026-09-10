@@ -430,7 +430,6 @@ php-mini-redis/
 │   │   ├── RespValue.php
 │   │   ├── RespParser.php
 │   │   ├── RespEncoder.php
-│   │   ├── RespStreamReader.php
 │   │   └── ProtocolException.php
 │   │
 │   ├── Command/

@@ -99,10 +99,10 @@ Commands that already arrived complete *before* the bad byte are still
 applied in order, mirroring how real Redis processes a pipeline: a client
 that mixed one valid command and one broken one sees the valid one take
 effect and *then* the `-ERR Protocol error: ...` reply before the
-disconnect. To make that possible, `RespStreamReader::readAll()` returns
-the values parsed so far together with the `ProtocolException` it ran
-into, instead of throwing it away mid-buffer - see
-`RespStreamReaderTest::testKeepsValuesParsedBeforeAMalformedTailAndReportsTheError`.
+disconnect. That falls out of how `processBufferedCommands()` reads: it
+parses and executes one value at a time, so a `ProtocolException` ends
+the loop with everything before it already done - see
+`RedisServerTest::testAValidCommandBeforeMalformedInputIsStillExecuted`.
 
 ## `SetCommand`'s `EX` option, not a generic options parser
 

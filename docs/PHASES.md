@@ -304,8 +304,9 @@ partial buffer must produce "need more data", not an error or a crash.
 ## Tasks
 
 * [x] Return `null` from `RespParser::parse()` on an incomplete buffer
-* [x] Add `RespStreamReader`, pulling every complete value out of a buffer
-      while leaving trailing partial bytes untouched
+* [x] `parse()` takes an offset, so successive values are pulled out of one
+      buffer without re-slicing it, and trailing partial bytes are left
+      untouched
 
 ## Definition of Done
 
@@ -434,7 +435,7 @@ full loop: read → parse → dispatch → encode → write.
 
 ## Tasks
 
-* [x] Wire `RespStreamReader` → `Command::fromRespValue()` →
+* [x] Wire `RespParser` → `Command::fromRespValue()` →
       `CommandDispatcher::dispatch()` → `RespEncoder::encode()` into
       `RedisServer`
 * [x] Malformed protocol input disconnects only the offending client
@@ -490,8 +491,9 @@ partial command left for the next one.
 
 ## Tasks
 
-* [x] `RespStreamReader::readAll()` already loops until the buffer holds no
-      complete value
+* [x] `RedisServer` loops over the read buffer until it holds no complete
+      value, carrying the parser's offset from one command to the next
+      (Phase 39 bounds how much of that happens in one turn)
 
 ## Definition of Done
 
@@ -1146,9 +1148,9 @@ command layer sees the value.
   below `-1`, oversized/nested past limits)
 * `RespParserFuzzTest::testValidInputStillParses`* — the valid edge cases
   (`$0\r\n\r\n`, `*-1`, exact nesting limit) keep working
-* the existing `RespParserTest` and `RespStreamReaderTest` suites still
-  pass unchanged, which is what pins the strictness to the *grammar*
-  rather than changing valid inputs' behavior
+* the existing `RespParserTest` suite still passes unchanged, which is
+  what pins the strictness to the *grammar* rather than changing valid
+  inputs' behavior
 
 ---
 
