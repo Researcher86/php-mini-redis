@@ -50,6 +50,13 @@ final class TimerManager
 
     /**
      * Fires every timer whose time has come, rescheduling repeating ones.
+     *
+     * A repeating timer's next run is $now plus its interval, not its
+     * previous due time plus its interval: a loop held up by a slow pass
+     * (or a long callback) resumes the interval from here instead of firing
+     * repeatedly to catch up on the runs it missed. For a TTL sweep or an
+     * idle check, "again in a second" is the point; "a second late, so run
+     * five times now" is not.
      */
     public function tick(float $now): void
     {
@@ -67,6 +74,10 @@ final class TimerManager
             }
         }
 
+        // Cancelled timers are dropped here, after the loop, rather than as
+        // they are cancelled: a callback may cancel its own timer (the
+        // shutdown checker does exactly that), and removing an element from
+        // the array being iterated is how that turns into a bug.
         $this->timers = array_values(array_filter(
             $this->timers,
             static fn (Timer $timer): bool => !$timer->isCancelled(),

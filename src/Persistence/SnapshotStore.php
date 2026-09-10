@@ -70,6 +70,11 @@ final readonly class SnapshotStore
             return;
         }
 
+        // No classes, whatever the file says. unserialize() otherwise
+        // instantiates whatever class names it finds and runs their
+        // __wakeup()/__destruct() - the classic way a writable file on disk
+        // turns into code execution. A snapshot only ever holds arrays,
+        // strings and numbers, so nothing is given up by refusing the rest.
         $entries = @unserialize($contents, ['allowed_classes' => false]);
 
         if (!is_array($entries)) {

@@ -8,6 +8,14 @@ use App\Connection\ClientConnection;
 
 /**
  * Tracks which connections are subscribed to which channels.
+ *
+ * Keyed by `ClientConnection::id()` - the socket's resource id - rather
+ * than by the object, so a channel's subscribers are a plain array and a
+ * connection can be removed from every channel without a scan for object
+ * identity. The price is that entries must be dropped explicitly when a
+ * connection goes (`RedisServer::disconnectClient()` does it): those ids
+ * are reused by later connections, so a leftover entry does not merely
+ * leak, it eventually points at someone else.
  */
 final class ChannelRegistry
 {

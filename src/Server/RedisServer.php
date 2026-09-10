@@ -228,6 +228,11 @@ final class RedisServer
         }
 
         if ($this->maxConnections !== null && $this->connections->count() >= $this->maxConnections) {
+            // Written straight to the socket and best-effort: this
+            // connection is never tracked, never given buffers, and never
+            // gets a second event loop pass to finish a partial write on.
+            // Telling the client why beats closing on it silently, but not
+            // at the cost of keeping it around.
             @fwrite($socket, $this->encoder->encode(RespValue::error('ERR max number of clients reached')));
             fclose($socket);
 
@@ -310,6 +315,10 @@ final class RedisServer
         $this->eventLoop->removeReadable($this->socket->resource());
 
         $deadline = $this->clock->now() + $this->shutdownGraceSeconds;
+
+        // By reference, because the callback cancels the very timer it is
+        // being registered as: $checker does not hold the Timer yet at the
+        // moment this closure is created, only by the time it first runs.
         $checker = $this->eventLoop->every(0.02, function () use (&$checker, $deadline): void {
             if ($this->connections->count() > 0 && $this->clock->now() < $deadline) {
                 return;
@@ -356,6 +365,11 @@ final class RedisServer
         $this->eventLoop->onReadable($connection->socket(), function () use ($connection): void {
             $chunk = @fread($connection->socket(), self::READ_CHUNK_SIZE);
 
+            // Empty means two different things on a non-blocking socket, and
+            // only feof() tells them apart: the peer closed the connection,
+            // or select() woke this up for a read that had nothing behind it
+            // (a spurious wakeup, a connection that reset). The first ends
+            // the connection; the second is a no-op.
             if ($chunk === false || ($chunk === '' && feof($connection->socket()))) {
                 $this->disconnectClient($connection);
 

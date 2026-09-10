@@ -23,6 +23,12 @@ final readonly class Command
 
     /**
      * Builds a Command from a parsed RESP array of bulk strings.
+     *
+     * That shape is the only one accepted: real clients send commands as an
+     * array of bulk strings, and anything else - a bare simple string, an
+     * integer, a nested array - is a client bug rather than a command this
+     * server has not implemented yet, so it is refused here instead of
+     * being carried further as a name nobody can dispatch.
      */
     public static function fromRespValue(RespValue $value): self
     {
@@ -37,6 +43,10 @@ final readonly class Command
         $parts = array_map(self::bulkStringOf(...), $value->value);
         $name = array_shift($parts);
 
+        // Uppercased once, here, so every later comparison - the dispatcher's
+        // lookup, the transaction layer's MULTI/EXEC/DISCARD check, the
+        // per-command metrics - is a plain equality against one spelling.
+        // Arguments keep their case: they are data, not names.
         return new self(strtoupper($name), $parts);
     }
 

@@ -25,6 +25,16 @@ final class ClientConnection
         $this->lastActivityAt = microtime(true);
     }
 
+    /**
+     * The socket's resource id, which is what every per-connection registry
+     * outside this class keys on (subscriptions, open transactions, the
+     * paused-reading set) rather than passing the object around.
+     *
+     * Worth knowing: the id stays readable after the socket is closed, but
+     * the number itself is reused by whatever the process opens next. A
+     * registry that fails to drop a closed connection's entry does not just
+     * leak it - it hands it to an unrelated connection later on.
+     */
     public function id(): int
     {
         return get_resource_id($this->socket);

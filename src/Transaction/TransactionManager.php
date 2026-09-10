@@ -9,6 +9,12 @@ use App\Connection\ClientConnection;
 
 /**
  * Tracks each connection's queued commands between MULTI and EXEC/DISCARD.
+ *
+ * "Is a transaction open" is the presence of an entry, not a flag on it -
+ * which is why an open transaction with nothing queued yet is an empty
+ * array rather than a missing key, and why discard() unsets instead of
+ * clearing. Keyed by connection id, with the same cleanup obligation as
+ * ChannelRegistry.
  */
 final class TransactionManager
 {
