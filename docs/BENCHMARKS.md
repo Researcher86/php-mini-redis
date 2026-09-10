@@ -30,30 +30,41 @@ machine over the loopback interface - not a tuned, isolated benchmark rig.
 Treat every number as "what this container measured", not an absolute
 claim about the implementation's ceiling on different hardware.
 
-**Run-to-run spread is large enough to matter.** The same commit measured
-twice on the same machine, minutes apart, produced 22.9k and 13.4k
-requests/sec for a single serial client, depending on nothing more than
-what else the laptop was doing. So a difference under about 1.5x between
-two runs here says nothing at all; the changes recorded below as
-improvements were each 5x or more, and were confirmed by measuring the
-tree before and after the change back to back rather than against a
-number written down earlier.
+**Run-to-run spread is large enough to matter.** The single-client figure
+moved between 12.0k and 22.9k req/s across runs of the same commit, on
+the same machine, depending on what else it was doing at the time. The
+server itself is not what moves: across six consecutive runs its
+`eventloop_iterations` grew by exactly the work it was given, and its
+RSS and `eventloop_max_lag_sec` did not change at all.
+
+So a difference under about 1.5x between two runs here says nothing. The
+changes recorded below as improvements were each 5x or more, and were
+confirmed by measuring the tree before and after the change back to back
+rather than against a number written down on another day.
 
 ## Results
 
+Each row is the median of three consecutive runs:
+
 | Command | Clients | Requests | Total | Req/s | p50 | p95 | p99 |
 |---|---|---|---|---|---|---|---|
-| PING | 1 | 2,000 | 2,000 | 22,883 | 0.038 ms | 0.048 ms | 0.060 ms |
-| PING | 10 | 2,000 | 20,000 | 38,625 | 0.223 ms | 0.449 ms | 0.481 ms |
-| PING | 50 | 500 | 25,000 | 38,040 | 1.254 ms | 1.363 ms | 2.294 ms |
-| SET | 10 | 1,000 | 10,000 | 30,947 | 0.272 ms | 0.545 ms | 0.587 ms |
-| GET | 10 | 1,000 | 10,000 | 33,221 | 0.252 ms | 0.507 ms | 0.542 ms |
-| INCR | 10 | 1,000 | 10,000 | 30,346 | 0.272 ms | 0.549 ms | 0.619 ms |
+| PING | 1 | 2,000 | 2,000 | 13,446 | 0.072 ms | 0.080 ms | 0.092 ms |
+| PING | 10 | 2,000 | 20,000 | 35,569 | 0.239 ms | 0.480 ms | 0.511 ms |
+| PING | 50 | 500 | 25,000 | 35,633 | 1.322 ms | 1.508 ms | 2.392 ms |
+| SET | 10 | 1,000 | 10,000 | 30,153 | 0.278 ms | 0.555 ms | 0.605 ms |
+| GET | 10 | 1,000 | 10,000 | 31,292 | 0.273 ms | 0.548 ms | 0.577 ms |
+| INCR | 10 | 1,000 | 10,000 | 28,361 | 0.289 ms | 0.586 ms | 0.694 ms |
+
+The one-client row is the least repeatable of the six: the same three
+runs gave 21,533, 13,446 and 12,025 req/s. A single serial client is a
+ping-pong between two processes, so it measures the host scheduler as
+much as the server - the ten- and fifty-client rows, where the loop
+always has work waiting, repeat within a few percent.
 
 ## Reading these numbers
 
-**Throughput roughly doubles from 1 to 10 concurrent clients, then
-flattens.** A single client's requests are strictly serial - each one
+**Throughput roughly doubles or better from 1 to 10 concurrent clients,
+then flattens.** A single client's requests are strictly serial - each one
 waits for its own previous reply - so one connection can never keep the
 single-threaded event loop continuously busy between requests. Adding
 concurrent clients fills those gaps, up to the point where the one
@@ -103,19 +114,18 @@ work:
 
 | Batch size | Req/s |
 |---|---|
-| 1 | 24,355 |
-| 10 | 82,416 |
-| 100 | 108,809 |
-| 1,000 | 116,114 |
-| 5,000 | 120,593 |
+| 1 | 14,416 |
+| 10 | 62,690 |
+| 100 | 99,798 |
+| 1,000 | 114,163 |
+| 5,000 | 119,626 |
 
 **A batch of one is a round trip**, and lands where one serial client
-lands in the main benchmark above (~22k/s) - it is the same
-send-wait-read pattern under a different name. Pipelining removes the
-waiting: ten commands per batch more than triples throughput, and from a
-hundred upward the same single connection sustains 110-120k/s, past what
-ten separate connections manage, because none of it is spent waiting for
-a round trip.
+lands in the main benchmark above - it is the same send-wait-read pattern
+under a different name. Pipelining removes the waiting: ten commands per
+batch more than quadruples throughput, and from a hundred upward the same
+single connection sustains 100-120k/s, past what ten separate connections
+manage, because none of it is spent waiting for a round trip.
 
 Two things had to be fixed before these numbers looked like this, and
 both are worth knowing about because neither is visible in a profile:
@@ -136,10 +146,10 @@ both are worth knowing about because neither is visible in a profile:
 
 | Subscribers | Messages | Deliveries | Deliveries/s |
 |---|---|---|---|
-| 20 | 50 | 1,000 | 34,140 |
+| 20 | 50 | 1,000 | 33,583 |
 
 20 subscribers on one channel, 50 published messages: 1,000 deliveries in
-~29 ms. Fan-out is the dominant cost - one PUBLISH writes to every
+~30 ms. Fan-out is the dominant cost - one PUBLISH writes to every
 subscriber's socket - so this number is really "how fast can one
 single-threaded loop touch 20 sockets", plus the publisher's own round
 trip per message, which is serial by construction here.
@@ -151,9 +161,9 @@ trip per message, which is serial by construction here.
 | | RSS |
 |---|---|
 | Before | 28.19 MiB |
-| After | 56.83 MiB |
-| Peak | 94.17 MiB |
-| Per key | ~300 B |
+| After | 52.77 MiB |
+| Peak | 89.17 MiB |
+| Per key | ~257 B |
 
 The write rate (~21k writes/s) is below the PING/SET rate from the main
 benchmark because each SET here also serializes a fresh 100+ byte value.
