@@ -54,22 +54,20 @@ final class RedisServer
      */
     private const int COMMAND_FRAMING_HEADROOM = 1024;
 
-    private ServerSocket $socket;
-    private ConnectionManager $connections;
-    private EventLoop $eventLoop;
-    private CommandDispatcher $dispatcher;
-    private Store $store;
-    private RespStreamReader $streamReader;
-    private RespEncoder $encoder;
-    private float $expirationSweepIntervalSeconds;
-    private ?float $idleTimeoutSeconds;
-    private ChannelRegistry $channels;
-    private TransactionManager $transactions;
-    private ?SnapshotStore $snapshots;
-    private ?ForkingSnapshotWorker $snapshotWorker;
-    private ServerMetrics $metrics;
-    private int $lowWriteBufferBytes;
-    private int $hardSubscriberWriteBufferBytes;
+    private readonly ServerSocket $socket;
+    private readonly ConnectionManager $connections;
+    private readonly EventLoop $eventLoop;
+    private readonly CommandDispatcher $dispatcher;
+    private readonly Store $store;
+    private readonly RespStreamReader $streamReader;
+    private readonly RespEncoder $encoder;
+    private readonly ChannelRegistry $channels;
+    private readonly TransactionManager $transactions;
+    private readonly ?SnapshotStore $snapshots;
+    private readonly ?ForkingSnapshotWorker $snapshotWorker;
+    private readonly ServerMetrics $metrics;
+    private readonly int $lowWriteBufferBytes;
+    private readonly int $hardSubscriberWriteBufferBytes;
     private bool $shuttingDown = false;
 
     /** @var array<int, true> Connection ids currently paused for reading. */
@@ -81,7 +79,7 @@ final class RedisServer
         ?CommandDispatcher $dispatcher = null,
         ?Store $store = null,
         float $expirationSweepIntervalSeconds = 1.0,
-        ?float $idleTimeoutSeconds = null,
+        private readonly ?float $idleTimeoutSeconds = null,
         ?string $snapshotPath = null,
         ?float $snapshotIntervalSeconds = null,
         private readonly Clock $clock = new SystemClock(),
@@ -137,8 +135,6 @@ final class RedisServer
             maxBulkStringBytes: max(1, $this->maxReadBufferBytes - self::COMMAND_FRAMING_HEADROOM),
         ));
         $this->encoder = new RespEncoder();
-        $this->expirationSweepIntervalSeconds = $expirationSweepIntervalSeconds;
-        $this->idleTimeoutSeconds = $idleTimeoutSeconds;
         $this->snapshots = $snapshotPath === null ? null : new SnapshotStore($snapshotPath);
         $this->snapshotWorker = $this->snapshots === null ? null : new ForkingSnapshotWorker($this->snapshots, $this->logger);
         $this->metrics = new ServerMetrics();
@@ -170,7 +166,7 @@ final class RedisServer
 
         // Active expiration: expired keys are also removed on a timer,
         // instead of only being noticed lazily the next time they are read.
-        $this->eventLoop->every($this->expirationSweepIntervalSeconds, function (): void {
+        $this->eventLoop->every($expirationSweepIntervalSeconds, function (): void {
             $this->metrics->recordExpiredKeys($this->store->sweepExpired());
         });
 
