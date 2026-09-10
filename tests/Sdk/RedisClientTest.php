@@ -8,8 +8,10 @@ use App\Protocol\RespType;
 use App\Sdk\CommandFailedException;
 use App\Sdk\ConnectionFailedException;
 use App\Sdk\RedisClient;
+use App\Sdk\RedisClientException;
 use App\Server\RedisServer;
 use App\Server\ServerConfig;
+use App\Tests\Support\FreePort;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -28,39 +30,28 @@ final class RedisClientTest extends TestCase
 
     protected function setUp(): void
     {
-        // Bound before the fork so the parent can read back the port the
-        // kernel picked; the child inherits the listening socket and is the
-        // only one that ever accepts on it.
-        $server = new RedisServer(new ServerConfig(host: self::HOST, port: 0));
-        [, $port] = explode(':', $server->localAddress());
-        $this->port = (int) $port;
+        $this->port = FreePort::find(self::HOST);
 
         $pid = pcntl_fork();
         self::assertNotSame(-1, $pid, 'pcntl_fork() failed');
 
         if ($pid === 0) {
-            // PHPUnit captures a test's output by keeping an output buffer
-            // open, and fork() hands the child a copy of it - which it would
-            // flush on the way out, printing the run's own progress a second
-            // time. It is the parent's buffer; the child gives it up.
-            while (ob_get_level() > 0) {
-                ob_end_clean();
-            }
-
             // Last-resort backstop, for a child that somehow outlives the
-            // test: SIGALRM's default action ends the process, and nothing
-            // here installs a handler for it.
+            // test - a run killed from the keyboard, a fatal error that
+            // skips tearDown(). SIGALRM's default action ends the process,
+            // and nothing here installs a handler for it.
             pcntl_alarm(15);
 
-            $server->run();
+            (new RedisServer(new ServerConfig(host: self::HOST, port: $this->port)))->run();
 
+            // Never return into PHPUnit: the child would go on to run the
+            // rest of the suite as a second test runner.
             exit(0);
         }
 
         $this->serverPid = $pid;
-        $server->stop(); // the parent's own copy of the listening socket
-
         $this->client = $this->newClient();
+        $this->awaitServer();
     }
 
     protected function tearDown(): void
@@ -252,6 +243,28 @@ final class RedisClientTest extends TestCase
         $this->client->close();
 
         self::assertSame('Tanat', $this->client->get('name'));
+    }
+
+    /**
+     * The child binds after the fork, so the first connection can arrive
+     * before it is listening - a connection refused here means "not yet",
+     * not "broken".
+     */
+    private function awaitServer(): void
+    {
+        $deadline = microtime(true) + 5.0;
+
+        while (microtime(true) < $deadline) {
+            try {
+                $this->client->ping();
+
+                return;
+            } catch (RedisClientException) {
+                usleep(20_000);
+            }
+        }
+
+        self::fail('The forked server never started listening.');
     }
 
     private function newClient(): RedisClient
