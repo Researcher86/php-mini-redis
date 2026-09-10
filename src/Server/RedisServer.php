@@ -283,6 +283,13 @@ final class RedisServer
      * synchronously rather than through the forking worker: the process is
      * about to go away, and a child outliving it is not a guarantee that
      * anything reached disk before it did.
+     *
+     * A scheduled snapshot already in flight has to finish first. It forked
+     * before these last writes happened, so it is carrying an older view of
+     * the store - and it renames into the same path this one does. Whoever
+     * renames last wins, and without waiting that is whichever process
+     * happens to finish last: a shutdown could leave the older snapshot on
+     * disk.
      */
     private function saveSnapshotBeforeStopping(): void
     {
@@ -290,6 +297,7 @@ final class RedisServer
             return;
         }
 
+        $this->snapshotWorker?->awaitCurrentSnapshot();
         $this->snapshots->save($this->store);
     }
 

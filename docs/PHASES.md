@@ -745,7 +745,9 @@ on startup.
 * [x] An optional repeating timer calls `saveSnapshot()` automatically
 * [x] `stop()` writes one final snapshot, synchronously, so a shutdown the
       server sees (including `SIGTERM` through Phase 23's
-      `requestShutdown()`) keeps what was written since the last one
+      `requestShutdown()`) keeps what was written since the last one - and
+      waits for a scheduled snapshot still in flight first, since that
+      child forked earlier and renames into the same path
 * [x] Keep persistence optional - both parameters default to `null`/off
 
 ## Definition of Done

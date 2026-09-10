@@ -48,6 +48,10 @@ raise the failure to the caller.
 A shutdown the server gets to see - `stop()`, or `SIGTERM`/`SIGINT`
 through `requestShutdown()` - writes one final snapshot on the way out, so
 a planned restart keeps what was written since the last scheduled one. A
+scheduled snapshot still being written by a forked child is waited for
+first (and killed if it outstays a five-second budget): it forked before
+those last writes and renames into the same path, so letting it finish
+afterwards would put the older snapshot on disk. A
 `SIGKILL`, a segfault, or the machine losing power gets no such chance:
 everything after the last snapshot is gone.
 

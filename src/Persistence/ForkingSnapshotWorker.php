@@ -89,6 +89,39 @@ final class ForkingSnapshotWorker
     }
 
     /**
+     * Blocks until the snapshot in progress, if any, has finished writing -
+     * so a caller about to write one itself cannot be overtaken by a child
+     * that started earlier and renames its older copy into place
+     * afterwards.
+     *
+     * A child that is still going when the budget runs out is killed rather
+     * than waited for: it is holding a point-in-time view that is now older
+     * than what the caller is about to write, so letting it finish would
+     * mean losing the newer snapshot to the older one - which is the
+     * failure this method exists to prevent.
+     */
+    public function awaitCurrentSnapshot(float $timeoutSeconds = 5.0): void
+    {
+        if ($this->childPid === null) {
+            return;
+        }
+
+        $deadline = microtime(true) + $timeoutSeconds;
+
+        while ($this->isChildStillWriting()) {
+            if (microtime(true) >= $deadline) {
+                posix_kill($this->childPid, SIGKILL);
+                pcntl_waitpid($this->childPid, $status);
+                $this->childPid = null;
+
+                return;
+            }
+
+            usleep(1000);
+        }
+    }
+
+    /**
      * Reaps the previous child if it has finished, and reports whether it is
      * still going.
      *

@@ -848,6 +848,57 @@ final class RedisServerTest extends TestCase
         }
     }
 
+    public function testTheFinalSnapshotIsNotOvertakenByOneAlreadyBeingWritten(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'mini-redis-snapshot-');
+        $loop = new SelectLoop();
+
+        try {
+            $server = new RedisServer(
+                new ServerConfig(host: '127.0.0.1', port: 0),
+                $loop,
+                snapshotPath: $path,
+                snapshotIntervalSeconds: 0.01,
+            );
+
+            // Big enough that the forked child is still serializing and
+            // writing when the shutdown below happens, and small enough to
+            // stay inside PHPUnit's memory limit.
+            $value = str_repeat('a', 4096);
+
+            for ($i = 0; $i < 6000; $i++) {
+                $server->store()->set('key:' . $i, $value);
+            }
+
+            // The scheduled snapshot fires and forks, carrying the store as
+            // it is right now.
+            usleep(20_000);
+            $loop->tick(0.05);
+
+            // The server keeps serving, and the store moves on.
+            $server->store()->set('written-after-the-fork', 'newer');
+
+            // Both write to the same path, and the last rename wins: without
+            // waiting for the child, a shutdown can leave the older
+            // snapshot - the one forked before this last write - on disk.
+            $server->stop();
+
+            while (pcntl_waitpid(-1, $status) > 0) {
+            }
+
+            $reloaded = new InMemoryStore();
+            (new SnapshotStore($path))->load($reloaded);
+
+            self::assertSame('newer', $reloaded->get('written-after-the-fork'));
+        } finally {
+            @unlink($path);
+
+            foreach (glob($path . '.*.tmp') ?: [] as $leftover) {
+                @unlink($leftover);
+            }
+        }
+    }
+
     public function testRequestShutdownStopsAcceptingNewConnectionsButDrainsExistingOnes(): void
     {
         $loop = new SelectLoop();
