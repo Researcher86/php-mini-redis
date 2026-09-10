@@ -67,6 +67,14 @@ final class RedisServer
      */
     private const int REPLY_BATCH_BYTES = 256 * 1024;
 
+    /**
+     * The most that is handed to a single fwrite(). Past a certain size the
+     * kernel's send buffer is the limit anyway, and asking PHP to copy a
+     * multi-megabyte backlog out of the write buffer for every attempt
+     * costs more than the write itself.
+     */
+    private const int WRITE_CHUNK_BYTES = 256 * 1024;
+
     private readonly ServerSocket $socket;
     private readonly ConnectionManager $connections;
     private readonly EventLoop $eventLoop;
@@ -581,7 +589,7 @@ final class RedisServer
             return;
         }
 
-        $written = @fwrite($connection->socket(), $buffer->contents());
+        $written = @fwrite($connection->socket(), $buffer->chunk(self::WRITE_CHUNK_BYTES));
 
         if ($written === false) {
             $this->disconnectClient($connection);
@@ -602,7 +610,7 @@ final class RedisServer
             $this->resumeReadingIfPaused($connection);
         }
 
-        if ($buffer->isEmpty()) { // @phpstan-ignore if.alwaysFalse (PHPStan can't see WriteBuffer::consume() change the buffer)
+        if ($buffer->isEmpty()) {
             $this->eventLoop->removeWritable($connection->socket());
             $connection->setState(ConnectionState::Reading);
 
