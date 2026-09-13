@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-ENV PHP_IDE_CONFIG serverName=php-mini-redis
+ENV PHP_IDE_CONFIG serverName=php-mini-cache
 
 # start_with_request=trigger, not yes: with "yes" every client.php run and
 # every test in the suite would try to reach a debugger that usually isn't

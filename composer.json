@@ -1,5 +1,5 @@
 {
-    "name": "tanat/php-mini-redis",
+    "name": "tanat/php-mini-cache",
     "type": "project",
     "license": "MIT",
     "autoload": {

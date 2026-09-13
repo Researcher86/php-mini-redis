@@ -1,7 +1,7 @@
 services:
   php:
     build: .
-    container_name: php-mini-redis
+    container_name: php-mini-cache
     working_dir: /app
     volumes:
       - .:/app
