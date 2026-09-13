@@ -377,7 +377,7 @@ The compose file's `container_name` still read `php-worker-pool` - copied,
 along with the rest of the early scaffolding (`Makefile`, `Dockerfile`,
 `composer.json`), from the sibling `php-worker-pool` project this
 repository's own `README.md` describes as part of the same series.
-Corrected to `php-mini-redis` once noticed; `docker compose exec php ...`
+Corrected to `php-mini-cache` once noticed; `docker compose exec php ...`
 was unaffected throughout, since compose addresses a service by its
 `services:` key (`php`), not by `container_name`.
 

@@ -2,7 +2,7 @@
 
 > Architecture and internal data flow of an educational event-driven in-memory database server written in PHP.
 
-This document describes how the main components of `php-mini-redis` work together.
+This document describes how the main components of `php-mini-cache` work together.
 
 The goal is not to document every implementation detail.
 

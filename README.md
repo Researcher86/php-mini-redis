@@ -2,7 +2,7 @@
 
 > An educational event-driven in-memory database server written in PHP.
 
-`php-mini-redis` is a small educational project for exploring how an event-driven in-memory database server works internally.
+`php-mini-cache` is a small educational project for exploring how an event-driven in-memory database server works internally.
 
 The goal is not to replace Redis.
 
@@ -390,7 +390,7 @@ each directory maps to one layer of [ARCHITECTURE.md](docs/ARCHITECTURE.md)'s
 separation (Networking → Protocol → Commands → State).
 
 ```text
-php-mini-redis/
+php-mini-cache/
 │
 ├── bin/
 │   ├── server.php              # entry point: RedisServer::run()
@@ -1651,7 +1651,7 @@ It explores:
 * graceful shutdown;
 * `DRAINING`.
 
-While `php-worker-pool` focuses on managing multiple Worker processes, `php-mini-redis` explores another concurrency model:
+While `php-worker-pool` focuses on managing multiple Worker processes, `php-mini-cache` explores another concurrency model:
 
 ```text
 Multiple Processes
@@ -1688,7 +1688,7 @@ php-job-queue
         ↓
 Background job processing
         ↓
-php-mini-redis
+php-mini-cache
         ↓
 Event-driven server architecture
 ```
