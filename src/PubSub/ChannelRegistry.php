@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\PubSub;
+namespace PhpMiniCache\PubSub;
 
-use App\Connection\ClientConnection;
+use PhpMiniCache\Connection\ClientConnection;
 
 /**
  * Tracks which connections are subscribed to which channels.

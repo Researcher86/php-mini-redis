@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\EventLoop;
+namespace PhpMiniCache\EventLoop;
 
 /**
  * Waits for readable/writable streams and dispatches them to listeners,

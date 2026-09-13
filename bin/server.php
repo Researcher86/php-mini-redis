@@ -3,10 +3,10 @@
 
 declare(strict_types=1);
 
-use App\Connection\ClientConnection;
-use App\Logging\ConsoleLogger;
-use App\Server\RedisServer;
-use App\Server\ServerConfig;
+use PhpMiniCache\Connection\ClientConnection;
+use PhpMiniCache\Logging\ConsoleLogger;
+use PhpMiniCache\Server\RedisServer;
+use PhpMiniCache\Server\ServerConfig;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 

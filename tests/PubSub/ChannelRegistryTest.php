@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\PubSub;
+namespace PhpMiniCache\Tests\PubSub;
 
-use App\PubSub\ChannelRegistry;
-use App\Tests\Support\CreatesTestConnections;
+use PhpMiniCache\PubSub\ChannelRegistry;
+use PhpMiniCache\Tests\Support\CreatesTestConnections;
 use PHPUnit\Framework\TestCase;
 
 final class ChannelRegistryTest extends TestCase

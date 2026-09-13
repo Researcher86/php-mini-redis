@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Command;
+namespace PhpMiniCache\Command;
 
-use App\Protocol\RespType;
-use App\Protocol\RespValue;
+use PhpMiniCache\Protocol\RespType;
+use PhpMiniCache\Protocol\RespValue;
 
 /**
  * A parsed command, separate from the RESP value it came from: a name and

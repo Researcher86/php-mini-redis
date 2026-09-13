@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Connection;
+namespace PhpMiniCache\Tests\Connection;
 
-use App\Connection\ReadBuffer;
+use PhpMiniCache\Connection\ReadBuffer;
 use PHPUnit\Framework\TestCase;
 
 final class ReadBufferTest extends TestCase

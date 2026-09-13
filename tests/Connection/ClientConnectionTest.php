@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Connection;
+namespace PhpMiniCache\Tests\Connection;
 
-use App\Connection\ClientConnection;
-use App\Connection\ConnectionState;
+use PhpMiniCache\Connection\ClientConnection;
+use PhpMiniCache\Connection\ConnectionState;
 use PHPUnit\Framework\TestCase;
 
 final class ClientConnectionTest extends TestCase

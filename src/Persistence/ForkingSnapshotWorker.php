@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Persistence;
+namespace PhpMiniCache\Persistence;
 
-use App\Logging\Logger;
-use App\Logging\NullLogger;
-use App\Storage\InMemoryStore;
+use PhpMiniCache\Logging\Logger;
+use PhpMiniCache\Logging\NullLogger;
+use PhpMiniCache\Storage\InMemoryStore;
 use Throwable;
 
 /**

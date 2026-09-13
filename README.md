@@ -1,4 +1,4 @@
-# PHP Mini Redis
+# PHP Mini Cache
 
 > An educational event-driven in-memory database server written in PHP.
 

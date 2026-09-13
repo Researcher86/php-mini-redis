@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Protocol;
+namespace PhpMiniCache\Protocol;
 
 /**
  * Parses RESP values out of a byte buffer.

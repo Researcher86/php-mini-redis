@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Logging;
+namespace PhpMiniCache\Logging;
 
 /**
  * Discards every message. Useful as a default when no logging is wanted,

@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Command\Handler;
+namespace PhpMiniCache\Tests\Command\Handler;
 
-use App\Command\Command;
-use App\Command\Handler\PingCommand;
-use App\Protocol\RespValue;
-use App\Storage\InMemoryStore;
-use App\Tests\Support\CreatesTestConnections;
+use PhpMiniCache\Command\Command;
+use PhpMiniCache\Command\Handler\PingCommand;
+use PhpMiniCache\Protocol\RespValue;
+use PhpMiniCache\Storage\InMemoryStore;
+use PhpMiniCache\Tests\Support\CreatesTestConnections;
 use PHPUnit\Framework\TestCase;
 
 final class PingCommandTest extends TestCase

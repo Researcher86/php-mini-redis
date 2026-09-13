@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Connection;
+namespace PhpMiniCache\Tests\Connection;
 
-use App\Connection\WriteBuffer;
+use PhpMiniCache\Connection\WriteBuffer;
 use PHPUnit\Framework\TestCase;
 
 final class WriteBufferTest extends TestCase

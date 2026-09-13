@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Sdk;
+namespace PhpMiniCache\Sdk;
 
 /** One message delivered to a subscribed connection. */
 final readonly class PubSubMessage

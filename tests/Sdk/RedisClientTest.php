@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Sdk;
+namespace PhpMiniCache\Tests\Sdk;
 
-use App\Protocol\RespType;
-use App\Sdk\CommandFailedException;
-use App\Sdk\ConnectionFailedException;
-use App\Sdk\RedisClient;
-use App\Sdk\RedisClientException;
-use App\Server\RedisServer;
-use App\Server\ServerConfig;
-use App\Tests\Support\FreePort;
+use PhpMiniCache\Protocol\RespType;
+use PhpMiniCache\Sdk\CommandFailedException;
+use PhpMiniCache\Sdk\ConnectionFailedException;
+use PhpMiniCache\Sdk\RedisClient;
+use PhpMiniCache\Sdk\RedisClientException;
+use PhpMiniCache\Server\RedisServer;
+use PhpMiniCache\Server\ServerConfig;
+use PhpMiniCache\Tests\Support\FreePort;
 use PHPUnit\Framework\TestCase;
 
 /**

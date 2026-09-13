@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Command\Handler;
+namespace PhpMiniCache\Tests\Command\Handler;
 
-use App\Command\Command;
-use App\Command\Handler\MultiCommand;
-use App\Protocol\RespType;
-use App\Protocol\RespValue;
-use App\Storage\InMemoryStore;
-use App\Tests\Support\CreatesTestConnections;
-use App\Transaction\TransactionManager;
+use PhpMiniCache\Command\Command;
+use PhpMiniCache\Command\Handler\MultiCommand;
+use PhpMiniCache\Protocol\RespType;
+use PhpMiniCache\Protocol\RespValue;
+use PhpMiniCache\Storage\InMemoryStore;
+use PhpMiniCache\Tests\Support\CreatesTestConnections;
+use PhpMiniCache\Transaction\TransactionManager;
 use PHPUnit\Framework\TestCase;
 
 final class MultiCommandTest extends TestCase

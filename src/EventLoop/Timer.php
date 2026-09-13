@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\EventLoop;
+namespace PhpMiniCache\EventLoop;
 
 /**
  * A scheduled callback: fires once after $interval seconds, or repeatedly

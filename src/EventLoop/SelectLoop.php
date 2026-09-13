@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\EventLoop;
+namespace PhpMiniCache\EventLoop;
 
-use App\Support\Clock;
-use App\Support\SystemClock;
+use PhpMiniCache\Support\Clock;
+use PhpMiniCache\Support\SystemClock;
 
 /**
  * An EventLoop built on stream_select(), extended with timers so time -

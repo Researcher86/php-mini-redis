@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Support;
+namespace PhpMiniCache\Tests\Support;
 
-use App\Connection\ClientConnection;
+use PhpMiniCache\Connection\ClientConnection;
 
 /**
  * A ClientConnection needs a real socket - this trait provides one cheaply

@@ -3,8 +3,8 @@
 
 declare(strict_types=1);
 
-use App\Sdk\RedisClient;
-use App\Sdk\RedisClientException;
+use PhpMiniCache\Sdk\RedisClient;
+use PhpMiniCache\Sdk\RedisClientException;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 

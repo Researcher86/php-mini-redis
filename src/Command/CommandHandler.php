@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Command;
+namespace PhpMiniCache\Command;
 
-use App\Connection\ClientConnection;
-use App\Protocol\RespValue;
-use App\Storage\Store;
+use PhpMiniCache\Connection\ClientConnection;
+use PhpMiniCache\Protocol\RespValue;
+use PhpMiniCache\Storage\Store;
 
 interface CommandHandler
 {

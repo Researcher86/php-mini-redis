@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Storage;
+namespace PhpMiniCache\Tests\Storage;
 
-use App\Storage\StoredValue;
+use PhpMiniCache\Storage\StoredValue;
 use PHPUnit\Framework\TestCase;
 
 final class StoredValueTest extends TestCase

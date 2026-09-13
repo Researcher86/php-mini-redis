@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Logging;
+namespace PhpMiniCache\Logging;
 
 interface Logger
 {

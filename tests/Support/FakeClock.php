@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Support;
+namespace PhpMiniCache\Tests\Support;
 
-use App\Support\Clock;
+use PhpMiniCache\Support\Clock;
 
 /** Test double for Clock: time only moves when the test tells it to. */
 final class FakeClock implements Clock

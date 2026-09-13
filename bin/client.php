@@ -3,11 +3,11 @@
 
 declare(strict_types=1);
 
-use App\Protocol\RespType;
-use App\Protocol\RespValue;
-use App\Sdk\CommandFailedException;
-use App\Sdk\RedisClient;
-use App\Sdk\RedisClientException;
+use PhpMiniCache\Protocol\RespType;
+use PhpMiniCache\Protocol\RespValue;
+use PhpMiniCache\Sdk\CommandFailedException;
+use PhpMiniCache\Sdk\RedisClient;
+use PhpMiniCache\Sdk\RedisClientException;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 

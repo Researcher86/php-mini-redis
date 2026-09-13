@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Sdk;
+namespace PhpMiniCache\Sdk;
 
 /**
  * The server answered with a RESP error (`-ERR ...`) instead of a result.

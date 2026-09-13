@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Connection;
+namespace PhpMiniCache\Connection;
 
 /**
  * Queues bytes waiting to be written to a socket.

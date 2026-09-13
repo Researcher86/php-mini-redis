@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Storage;
+namespace PhpMiniCache\Storage;
 
 /**
  * A stored value plus optional expiration metadata.

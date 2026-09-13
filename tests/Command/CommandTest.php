@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Command;
+namespace PhpMiniCache\Tests\Command;
 
-use App\Command\Command;
-use App\Command\CommandException;
-use App\Protocol\RespValue;
+use PhpMiniCache\Command\Command;
+use PhpMiniCache\Command\CommandException;
+use PhpMiniCache\Protocol\RespValue;
 use PHPUnit\Framework\TestCase;
 
 final class CommandTest extends TestCase

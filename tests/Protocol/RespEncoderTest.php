@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Protocol;
+namespace PhpMiniCache\Tests\Protocol;
 
-use App\Protocol\RespEncoder;
-use App\Protocol\RespValue;
+use PhpMiniCache\Protocol\RespEncoder;
+use PhpMiniCache\Protocol\RespValue;
 use PHPUnit\Framework\TestCase;
 
 final class RespEncoderTest extends TestCase

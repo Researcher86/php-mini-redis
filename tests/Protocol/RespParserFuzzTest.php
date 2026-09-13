@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Protocol;
+namespace PhpMiniCache\Tests\Protocol;
 
-use App\Protocol\ProtocolException;
-use App\Protocol\RespParser;
+use PhpMiniCache\Protocol\ProtocolException;
+use PhpMiniCache\Protocol\RespParser;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 

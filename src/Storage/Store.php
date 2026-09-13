@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Storage;
+namespace PhpMiniCache\Storage;
 
 /**
  * The database core: stores, reads, updates and deletes keyed values.

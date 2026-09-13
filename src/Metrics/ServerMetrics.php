@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Metrics;
+namespace PhpMiniCache\Metrics;
 
 /**
  * Runtime counters for observability: connections, commands, bytes,

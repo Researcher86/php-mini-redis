@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace App\Command\Handler;
+namespace PhpMiniCache\Command\Handler;
 
-use App\Command\Command;
-use App\Command\CommandHandler;
-use App\Connection\ClientConnection;
-use App\Protocol\RespValue;
-use App\Storage\Store;
-use App\Transaction\TransactionManager;
+use PhpMiniCache\Command\Command;
+use PhpMiniCache\Command\CommandHandler;
+use PhpMiniCache\Connection\ClientConnection;
+use PhpMiniCache\Protocol\RespValue;
+use PhpMiniCache\Storage\Store;
+use PhpMiniCache\Transaction\TransactionManager;
 
 final readonly class DiscardCommand implements CommandHandler
 {

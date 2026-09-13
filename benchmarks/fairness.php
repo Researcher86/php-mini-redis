@@ -24,7 +24,7 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/examples/bootstrap.php';
 
-use App\Sdk\RedisClient;
+use PhpMiniCache\Sdk\RedisClient;
 
 const PIPELINE_COMMANDS = 100_000;
 const BASELINE_PROBES = 500;

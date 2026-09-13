@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Server;
+namespace PhpMiniCache\Tests\Server;
 
-use App\Connection\ClientConnection;
-use App\Connection\ConnectionState;
-use App\EventLoop\SelectLoop;
-use App\Persistence\SnapshotStore;
-use App\Server\RedisServer;
-use App\Server\ServerConfig;
-use App\Storage\InMemoryStore;
-use App\Tests\Support\FakeClock;
+use PhpMiniCache\Connection\ClientConnection;
+use PhpMiniCache\Connection\ConnectionState;
+use PhpMiniCache\EventLoop\SelectLoop;
+use PhpMiniCache\Persistence\SnapshotStore;
+use PhpMiniCache\Server\RedisServer;
+use PhpMiniCache\Server\ServerConfig;
+use PhpMiniCache\Storage\InMemoryStore;
+use PhpMiniCache\Tests\Support\FakeClock;
 use PHPUnit\Framework\TestCase;
 use ReflectionProperty;
 

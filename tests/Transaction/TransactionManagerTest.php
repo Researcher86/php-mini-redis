@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Transaction;
+namespace PhpMiniCache\Tests\Transaction;
 
-use App\Command\Command;
-use App\Protocol\RespValue;
-use App\Tests\Support\CreatesTestConnections;
-use App\Transaction\TransactionManager;
+use PhpMiniCache\Command\Command;
+use PhpMiniCache\Protocol\RespValue;
+use PhpMiniCache\Tests\Support\CreatesTestConnections;
+use PhpMiniCache\Transaction\TransactionManager;
 use PHPUnit\Framework\TestCase;
 
 final class TransactionManagerTest extends TestCase

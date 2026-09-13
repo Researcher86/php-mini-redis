@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Connection;
+namespace PhpMiniCache\Connection;
 
 /**
  * Tracks every currently connected client.

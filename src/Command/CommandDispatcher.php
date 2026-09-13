@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace App\Command;
+namespace PhpMiniCache\Command;
 
-use App\Command\Handler\DelCommand;
-use App\Command\Handler\ExistsCommand;
-use App\Command\Handler\GetCommand;
-use App\Command\Handler\IncrCommand;
-use App\Command\Handler\PingCommand;
-use App\Command\Handler\SetCommand;
-use App\Connection\ClientConnection;
-use App\Protocol\RespValue;
-use App\Storage\Store;
+use PhpMiniCache\Command\Handler\DelCommand;
+use PhpMiniCache\Command\Handler\ExistsCommand;
+use PhpMiniCache\Command\Handler\GetCommand;
+use PhpMiniCache\Command\Handler\IncrCommand;
+use PhpMiniCache\Command\Handler\PingCommand;
+use PhpMiniCache\Command\Handler\SetCommand;
+use PhpMiniCache\Connection\ClientConnection;
+use PhpMiniCache\Protocol\RespValue;
+use PhpMiniCache\Storage\Store;
 
 /**
  * Routes a Command to the handler registered for its name.

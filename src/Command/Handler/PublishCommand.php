@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace App\Command\Handler;
+namespace PhpMiniCache\Command\Handler;
 
-use App\Command\Command;
-use App\Command\CommandHandler;
-use App\Connection\ClientConnection;
-use App\Protocol\RespEncoder;
-use App\Protocol\RespValue;
-use App\PubSub\ChannelRegistry;
-use App\Storage\Store;
+use PhpMiniCache\Command\Command;
+use PhpMiniCache\Command\CommandHandler;
+use PhpMiniCache\Connection\ClientConnection;
+use PhpMiniCache\Protocol\RespEncoder;
+use PhpMiniCache\Protocol\RespValue;
+use PhpMiniCache\PubSub\ChannelRegistry;
+use PhpMiniCache\Storage\Store;
 
 final readonly class PublishCommand implements CommandHandler
 {

@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Command\Handler;
+namespace PhpMiniCache\Tests\Command\Handler;
 
-use App\Command\Command;
-use App\Command\Handler\InfoCommand;
-use App\Connection\ConnectionManager;
-use App\EventLoop\EventLoopMetrics;
-use App\Metrics\ServerMetrics;
-use App\Protocol\RespType;
-use App\Protocol\RespValue;
-use App\Storage\InMemoryStore;
-use App\Tests\Support\CreatesTestConnections;
+use PhpMiniCache\Command\Command;
+use PhpMiniCache\Command\Handler\InfoCommand;
+use PhpMiniCache\Connection\ConnectionManager;
+use PhpMiniCache\EventLoop\EventLoopMetrics;
+use PhpMiniCache\Metrics\ServerMetrics;
+use PhpMiniCache\Protocol\RespType;
+use PhpMiniCache\Protocol\RespValue;
+use PhpMiniCache\Storage\InMemoryStore;
+use PhpMiniCache\Tests\Support\CreatesTestConnections;
 use PHPUnit\Framework\TestCase;
 
 final class InfoCommandTest extends TestCase

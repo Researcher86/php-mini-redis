@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Sdk;
+namespace PhpMiniCache\Sdk;
 
 /**
  * The connection went away with a reply still owed. The server closes a

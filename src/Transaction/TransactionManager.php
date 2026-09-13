@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Transaction;
+namespace PhpMiniCache\Transaction;
 
-use App\Command\Command;
-use App\Connection\ClientConnection;
+use PhpMiniCache\Command\Command;
+use PhpMiniCache\Connection\ClientConnection;
 
 /**
  * Tracks each connection's queued commands between MULTI and EXEC/DISCARD.

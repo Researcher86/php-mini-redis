@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Sdk;
+namespace PhpMiniCache\Sdk;
 
-use App\Protocol\ProtocolException;
-use App\Protocol\RespEncoder;
-use App\Protocol\RespParser;
-use App\Protocol\RespType;
-use App\Protocol\RespValue;
+use PhpMiniCache\Protocol\ProtocolException;
+use PhpMiniCache\Protocol\RespEncoder;
+use PhpMiniCache\Protocol\RespParser;
+use PhpMiniCache\Protocol\RespType;
+use PhpMiniCache\Protocol\RespValue;
 
 /**
  * Client for talking to a running server over TCP - from a CLI script, a

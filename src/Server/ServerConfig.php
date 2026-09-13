@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Server;
+namespace PhpMiniCache\Server;
 
 final readonly class ServerConfig
 {

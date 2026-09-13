@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Storage;
+namespace PhpMiniCache\Storage;
 
-use App\Support\Clock;
-use App\Support\SystemClock;
+use PhpMiniCache\Support\Clock;
+use PhpMiniCache\Support\SystemClock;
 use SplMinHeap;
 
 final class InMemoryStore implements Store

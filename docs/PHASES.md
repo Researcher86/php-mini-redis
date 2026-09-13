@@ -1430,7 +1430,7 @@ their own. Give the server one client, the way `php-worker-pool` has one
 
 ## Tasks
 
-* [x] `App\Sdk\RedisClient`: one method per command the server implements,
+* [x] `PhpMiniCache\Sdk\RedisClient`: one method per command the server implements,
       plus `command()` for anything else
 * [x] Pipelining as `pipeline()` - every command written before any reply
       is read, one round trip for the batch

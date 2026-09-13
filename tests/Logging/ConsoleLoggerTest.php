@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Logging;
+namespace PhpMiniCache\Tests\Logging;
 
-use App\Logging\ConsoleLogger;
+use PhpMiniCache\Logging\ConsoleLogger;
 use PHPUnit\Framework\TestCase;
 
 final class ConsoleLoggerTest extends TestCase

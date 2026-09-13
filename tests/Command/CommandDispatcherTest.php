@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Command;
+namespace PhpMiniCache\Tests\Command;
 
-use App\Command\Command;
-use App\Command\CommandDispatcher;
-use App\Command\CommandHandler;
-use App\Connection\ClientConnection;
-use App\Protocol\RespType;
-use App\Protocol\RespValue;
-use App\Storage\InMemoryStore;
-use App\Storage\Store;
-use App\Tests\Support\CreatesTestConnections;
+use PhpMiniCache\Command\Command;
+use PhpMiniCache\Command\CommandDispatcher;
+use PhpMiniCache\Command\CommandHandler;
+use PhpMiniCache\Connection\ClientConnection;
+use PhpMiniCache\Protocol\RespType;
+use PhpMiniCache\Protocol\RespValue;
+use PhpMiniCache\Storage\InMemoryStore;
+use PhpMiniCache\Storage\Store;
+use PhpMiniCache\Tests\Support\CreatesTestConnections;
 use PHPUnit\Framework\TestCase;
 
 final class CommandDispatcherTest extends TestCase

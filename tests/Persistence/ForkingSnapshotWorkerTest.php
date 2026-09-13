@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Persistence;
+namespace PhpMiniCache\Tests\Persistence;
 
-use App\Logging\ConsoleLogger;
-use App\Persistence\ForkingSnapshotWorker;
-use App\Persistence\SnapshotStore;
-use App\Storage\InMemoryStore;
+use PhpMiniCache\Logging\ConsoleLogger;
+use PhpMiniCache\Persistence\ForkingSnapshotWorker;
+use PhpMiniCache\Persistence\SnapshotStore;
+use PhpMiniCache\Storage\InMemoryStore;
 use PHPUnit\Framework\TestCase;
 
 final class ForkingSnapshotWorkerTest extends TestCase

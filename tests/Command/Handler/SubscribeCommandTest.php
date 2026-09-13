@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Command\Handler;
+namespace PhpMiniCache\Tests\Command\Handler;
 
-use App\Command\Command;
-use App\Command\Handler\SubscribeCommand;
-use App\Protocol\RespType;
-use App\Protocol\RespValue;
-use App\PubSub\ChannelRegistry;
-use App\Storage\InMemoryStore;
-use App\Tests\Support\CreatesTestConnections;
+use PhpMiniCache\Command\Command;
+use PhpMiniCache\Command\Handler\SubscribeCommand;
+use PhpMiniCache\Protocol\RespType;
+use PhpMiniCache\Protocol\RespValue;
+use PhpMiniCache\PubSub\ChannelRegistry;
+use PhpMiniCache\Storage\InMemoryStore;
+use PhpMiniCache\Tests\Support\CreatesTestConnections;
 use PHPUnit\Framework\TestCase;
 
 final class SubscribeCommandTest extends TestCase

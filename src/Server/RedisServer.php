@@ -2,38 +2,38 @@
 
 declare(strict_types=1);
 
-namespace App\Server;
+namespace PhpMiniCache\Server;
 
-use App\Command\Command;
-use App\Command\CommandDispatcher;
-use App\Command\CommandException;
-use App\Command\Handler\DiscardCommand;
-use App\Command\Handler\ExecCommand;
-use App\Command\Handler\InfoCommand;
-use App\Command\Handler\MultiCommand;
-use App\Command\Handler\PublishCommand;
-use App\Command\Handler\SubscribeCommand;
-use App\Connection\ClientConnection;
-use App\Connection\ConnectionManager;
-use App\Connection\ConnectionState;
-use App\EventLoop\EventLoop;
-use App\EventLoop\SelectLoop;
-use App\Logging\Logger;
-use App\Logging\NullLogger;
-use App\Metrics\ServerMetrics;
-use App\Persistence\ForkingSnapshotWorker;
-use App\Persistence\SnapshotStore;
-use App\Protocol\RespEncoder;
-use App\Protocol\ProtocolException;
-use App\Protocol\RespParser;
-use App\Protocol\RespType;
-use App\Protocol\RespValue;
-use App\PubSub\ChannelRegistry;
-use App\Storage\InMemoryStore;
-use App\Storage\Store;
-use App\Support\Clock;
-use App\Support\SystemClock;
-use App\Transaction\TransactionManager;
+use PhpMiniCache\Command\Command;
+use PhpMiniCache\Command\CommandDispatcher;
+use PhpMiniCache\Command\CommandException;
+use PhpMiniCache\Command\Handler\DiscardCommand;
+use PhpMiniCache\Command\Handler\ExecCommand;
+use PhpMiniCache\Command\Handler\InfoCommand;
+use PhpMiniCache\Command\Handler\MultiCommand;
+use PhpMiniCache\Command\Handler\PublishCommand;
+use PhpMiniCache\Command\Handler\SubscribeCommand;
+use PhpMiniCache\Connection\ClientConnection;
+use PhpMiniCache\Connection\ConnectionManager;
+use PhpMiniCache\Connection\ConnectionState;
+use PhpMiniCache\EventLoop\EventLoop;
+use PhpMiniCache\EventLoop\SelectLoop;
+use PhpMiniCache\Logging\Logger;
+use PhpMiniCache\Logging\NullLogger;
+use PhpMiniCache\Metrics\ServerMetrics;
+use PhpMiniCache\Persistence\ForkingSnapshotWorker;
+use PhpMiniCache\Persistence\SnapshotStore;
+use PhpMiniCache\Protocol\RespEncoder;
+use PhpMiniCache\Protocol\ProtocolException;
+use PhpMiniCache\Protocol\RespParser;
+use PhpMiniCache\Protocol\RespType;
+use PhpMiniCache\Protocol\RespValue;
+use PhpMiniCache\PubSub\ChannelRegistry;
+use PhpMiniCache\Storage\InMemoryStore;
+use PhpMiniCache\Storage\Store;
+use PhpMiniCache\Support\Clock;
+use PhpMiniCache\Support\SystemClock;
+use PhpMiniCache\Transaction\TransactionManager;
 
 /**
  * Accepts TCP clients through an EventLoop, parses complete RESP values

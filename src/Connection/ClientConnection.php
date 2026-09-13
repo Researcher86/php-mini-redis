@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Connection;
+namespace PhpMiniCache\Connection;
 
-use App\Support\Clock;
-use App\Support\SystemClock;
+use PhpMiniCache\Support\Clock;
+use PhpMiniCache\Support\SystemClock;
 
 /**
  * Represents one connected client: its socket, its buffers, its state and

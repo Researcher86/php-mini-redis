@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Command\Handler;
+namespace PhpMiniCache\Tests\Command\Handler;
 
-use App\Command\Command;
-use App\Command\Handler\IncrCommand;
-use App\Protocol\RespType;
-use App\Protocol\RespValue;
-use App\Storage\InMemoryStore;
-use App\Tests\Support\CreatesTestConnections;
-use App\Tests\Support\FakeClock;
+use PhpMiniCache\Command\Command;
+use PhpMiniCache\Command\Handler\IncrCommand;
+use PhpMiniCache\Protocol\RespType;
+use PhpMiniCache\Protocol\RespValue;
+use PhpMiniCache\Storage\InMemoryStore;
+use PhpMiniCache\Tests\Support\CreatesTestConnections;
+use PhpMiniCache\Tests\Support\FakeClock;
 use PHPUnit\Framework\TestCase;
 
 final class IncrCommandTest extends TestCase

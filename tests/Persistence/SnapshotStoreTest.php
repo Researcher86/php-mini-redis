@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Persistence;
+namespace PhpMiniCache\Tests\Persistence;
 
-use App\Persistence\SnapshotStore;
-use App\Storage\InMemoryStore;
-use App\Tests\Support\FakeClock;
+use PhpMiniCache\Persistence\SnapshotStore;
+use PhpMiniCache\Storage\InMemoryStore;
+use PhpMiniCache\Tests\Support\FakeClock;
 use PHPUnit\Framework\TestCase;
 
 final class SnapshotStoreTest extends TestCase

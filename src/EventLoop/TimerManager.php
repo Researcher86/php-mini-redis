@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\EventLoop;
+namespace PhpMiniCache\EventLoop;
 
 /**
  * Tracks scheduled timers and fires the ones that are due.

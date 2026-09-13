@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\EventLoop;
+namespace PhpMiniCache\EventLoop;
 
 /**
  * Observability for the event loop itself: how many wait/dispatch passes it

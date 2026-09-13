@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Storage;
+namespace PhpMiniCache\Tests\Storage;
 
-use App\Storage\InMemoryStore;
-use App\Tests\Support\FakeClock;
+use PhpMiniCache\Storage\InMemoryStore;
+use PhpMiniCache\Tests\Support\FakeClock;
 use PHPUnit\Framework\TestCase;
 use ReflectionProperty;
 use SplMinHeap;

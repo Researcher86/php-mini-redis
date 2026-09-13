@@ -271,9 +271,9 @@ and the value does not exist yet. `queue()` says what is actually
 happening, and `exec()` hands back one `RespValue` per queued command,
 because a transaction's commands need not agree on a return type.
 
-The client lives in `App\Sdk` rather than `App\Client`, which is already
+The client lives in `PhpMiniCache\Sdk` rather than `PhpMiniCache\Client`, which is already
 taken by the *server's* view of a connected client
-(`App\Connection\ClientConnection`) - the same split, and the same name,
+(`PhpMiniCache\Connection\ClientConnection`) - the same split, and the same name,
 `php-worker-pool` uses for its own `WorkerPoolClient`.
 
 ## No per-pass command budget: the bound is already there, in bytes

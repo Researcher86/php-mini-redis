@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace App\Command\Handler;
+namespace PhpMiniCache\Command\Handler;
 
-use App\Command\Command;
-use App\Command\CommandHandler;
-use App\Connection\ClientConnection;
-use App\Connection\ConnectionManager;
-use App\EventLoop\EventLoopMetrics;
-use App\Metrics\ServerMetrics;
-use App\Protocol\RespValue;
-use App\Storage\Store;
+use PhpMiniCache\Command\Command;
+use PhpMiniCache\Command\CommandHandler;
+use PhpMiniCache\Connection\ClientConnection;
+use PhpMiniCache\Connection\ConnectionManager;
+use PhpMiniCache\EventLoop\EventLoopMetrics;
+use PhpMiniCache\Metrics\ServerMetrics;
+use PhpMiniCache\Protocol\RespValue;
+use PhpMiniCache\Storage\Store;
 
 /**
  * A small subset of real Redis's INFO: one bulk string of "key:value"

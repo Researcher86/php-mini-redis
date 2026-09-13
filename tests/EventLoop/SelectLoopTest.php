@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\EventLoop;
+namespace PhpMiniCache\Tests\EventLoop;
 
-use App\EventLoop\SelectLoop;
-use App\Tests\Support\FakeClock;
+use PhpMiniCache\EventLoop\SelectLoop;
+use PhpMiniCache\Tests\Support\FakeClock;
 use PHPUnit\Framework\TestCase;
 
 final class SelectLoopTest extends TestCase

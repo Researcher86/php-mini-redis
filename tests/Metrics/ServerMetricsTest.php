@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Metrics;
+namespace PhpMiniCache\Tests\Metrics;
 
-use App\Metrics\ServerMetrics;
+use PhpMiniCache\Metrics\ServerMetrics;
 use PHPUnit\Framework\TestCase;
 
 final class ServerMetricsTest extends TestCase
